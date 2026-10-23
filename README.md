@@ -77,54 +77,6 @@ dsh plugin add link:<本仓库路径>/context_1m
 > 宿主安装树，会以 `MODULE_NOT_FOUND` → `failed to import` 收场。
 > 验证方式：设置 → 插件里看条目是否 `active`。
 
-## 换机器 / 新开发机一键初始化
-
-仓库是公开的，**拉代码不需要凭据**，但 push 需要一把登记到 GitHub 账号的 SSH key。
-在 SourceTree 里用 HTTPS 地址 clone 下来之后（或者任意方式拿到本仓库），跑一次：
-
-```bash
-bash dsh-plugins/tools/setup-github-ssh.sh
-```
-
-[`tools/setup-github-ssh.sh`](tools/setup-github-ssh.sh) 全程**不需要任何输入**，也不动你的工作区：
-
-1. 生成这台机器**自己的** ed25519 密钥（`~/.ssh/id_ed25519_github`；已存在就复用，绝不覆盖私钥）；
-2. 在 `~/.ssh/config` 里维护一段带标记的配置：公司网络常把 `github.com:22` 掐掉（TCP 连得上、SSH 握手被断），
-   所以走 GitHub 官方的 `ssh.github.com:443`，另留 `github-22` 直连别名；**标记段以外的内容一个字不动**，
-   公司那套 HTTPS 仓库和 SourceTree 账号也不受影响；
-3. 把公钥复制到剪贴板、打印出来，并当场 `ssh -T` 验证（只试这把 key、只走 443，
-   跟 ssh-agent 和别的 key 完全隔离，不会误报「已认证」）。
-
-**唯一的人工步骤**是把那行公钥贴到 <https://github.com/settings/keys> 一次（这步没法自动化）；
-贴完再跑一次脚本，看到 `✔ 已认证` 就完事了 —— 之后 SourceTree 里直接提交、推送，不会再要账号密码。
-
-SourceTree 侧只需要确认两件事：设置 → 通用 → **SSH 客户端 = OpenSSH**（macOS 默认就是）；
-仓库的远程地址用 SSH 形式 `git@github.com:cl19940824/dsh-plugins.git`
-（新建克隆时直接填这个，已有仓库就在「仓库设置 → 远程仓库」里改 URL）。那个报错上不去的
-GitHub HTTPS 账号可以留着不管，也可以删掉 —— SSH 用不到它。
-
-常用开关：`--dir <路径>`（顺便 clone / 更新到该路径，默认完全不碰你的工作区）、`--repo <地址>`（换个仓库）、
-`--no-copy`（不复制到剪贴板）、`--help`。退出码：`0` 已能推送、`1` 还差贴公钥、`2` 连不上 GitHub。
-
-配好之后装插件：
-
-```bash
-python3 ~/.dsh/skills/dsh-plugin-install/scripts/install_plugin.py <仓库路径> --profile desktop   # web 外壳用 --profile web
-```
-
-或者在界面里用 [`batch_install`](batch_install)：设置 → 插件 → **批量安装** → 选仓库文件夹 → 全选 → 安装选中。
-
-### 给别人跑也安全
-
-- **不读私钥内容**（只读 `.pub`，私钥在本机现生成、永远不出本机）、**不联网取任何东西**、无埋点、不 sudo、不装包；
-- 只写 `~/.ssh`，以及你**显式**用 `--dir` 指定的路径；密钥文件已存在就复用，绝不覆盖；
-- `~/.ssh/config` 是**符号链接**（dotfiles 管理）时**拒绝改动**，只把该加的片段打给你；
-- 已有别的 `Host github.com` 段时只**警告**（SSH 只取先出现的值，硬抢会破坏别人的设置），
-  并用 `ssh -G` 检查实际解析结果，不符就提示手工合并；
-- `--dir` 指向**别人的仓库**时绝不改它的 remote，只打印该自己跑的命令。
-
-> 脚本里没有秘密：没有私钥、没有 token，只有仓库地址（本来就公开）。不想要它 `git rm -r tools/` 删掉即可。
-
 ## 目录约定
 
 每个插件目录都是一份完整、自包含的插件包：
