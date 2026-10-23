@@ -1,7 +1,7 @@
 # dsh-plugins
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（下称 dsh）的第三方插件集，
-共 **10 个插件**。每个插件都是一份「宿主半边 + Web 客户端半边」的完整包：宿主半边在 Node 里采集数据、
+共 **11 个插件**。每个插件都是一份「宿主半边 + Web 客户端半边」的完整包：宿主半边在 Node 里采集数据、
 挂路由、改 profile 配置；客户端半边挂进启动图，往 Web 界面注入入口、面板或勾选框。
 
 > 本仓库是社区插件集，与 DeepSeek 官方无关。插件通过 dsh 公开的 bundle / client-modules
@@ -21,6 +21,7 @@
 | `context_1m/` | `dsh-context-1m` | 输入框模型选择器左边的「1M」勾选框：为**当前模型**写入 / 写回 `contextWindow` | bundle | 输入框 |
 | `thinking_strength/` | `dsh-thinking-strength` | 输入框模型选择器左边的「思考」勾选框：为**当前模型**补全 / 删除 `reasoningEfforts` 档位 | bundle | 输入框 |
 | `image_reader/` | `dsh-image-reader` | 给纯文本模型一双「借来的眼睛」：当前模型不支持图片输入时注入 `read_image_details` 工具，把「图片 + 问题」转发给指定的多模态模型，再把答案原样带回 | bundle | 设置 → 图像解读 |
+| `batch_install/` | `dsh-batch-install` | 插件安装体验补丁：**选文件夹**（走 dsh 自带的目录选择器，不用手输路径）+ **批量安装**（扫出文件夹里的插件，勾选后一次装完，逐条报成功 / 需重启 / 失败） | bundle | 设置 → 插件（「批量安装」标签 + 添加菜单） |
 
 ## 两种插件形态
 
@@ -36,7 +37,7 @@
   peer 兼容检查。
 - 浏览器半边不用写补丁：dsh 的 client-modules 从入口往上找最近的 `package.json`，
   读到 `dsh.client.platform === "web"` 就按 `exports["./client"]` 自动挂进启动图。
-- 采用：`context_1m/`、`thinking_strength/`、`image_reader/`
+- 采用：`context_1m/`、`thinking_strength/`、`image_reader/`、`batch_install/`
 
 ### 2. `legacy` 形态
 

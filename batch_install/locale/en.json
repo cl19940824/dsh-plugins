@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Batch local plugin install",
+    "description": "Adds two entrances to Settings → Plugins: a \"Batch install\" tab and an \"Install from folder…\" row in the Add menu. Pick a folder with the harness's own native directory chooser (no path typing); the host half lists the dsh plugin packages inside it (package.json with dsh.bundle.patch, or a legacy manifest.json), the page marks each as installed / installable / legacy, and ticking them installs them one after another through the plugin manager's own installBundle, reporting ok, restart-required, or failure per row."
+  }
+}

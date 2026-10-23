@@ -1,0 +1,38 @@
+{
+  "name": "dsh-batch-install",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "给插件页加一个「批量安装」标签和一个「从文件夹安装」菜单入口：走原生目录选择器选文件夹，自动扫出里面的 dsh 插件，勾选后一次装完，不用手输路径",
+  "exports": {
+    ".": "./batch-install.mjs",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "batch-install.mjs",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.0-rc.2 <0.3.0"
+  }
+}

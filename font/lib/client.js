@@ -124,10 +124,33 @@ window.__ModuleLoader__.load({
 			return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
 		}
 
+		/*
+		 * 覆盖写在哪里 —— 这是本插件唯一要紧的一件事。
+		 *
+		 * dsh 0.2.1-rc.2 起，设计 token 的落地位置变了：base.css 只在 `:root` 上放默认值，
+		 * 真正的 token 表（--dsw-font-*、--ds-font-family-code、--dsw-alias-* 颜色）全部
+		 * 声明在 `body` / `body[data-ds-dark-theme]` 上。自定义属性是按元素继承的，body 自己
+		 * 声明了同名 token，写在 `:root` 上的覆盖对 body 及其所有后代就一律失效 —— 把 <style>
+		 * 挪到 <head> 末尾也救不回来，因为跨元素比的不是级联顺序，而是“谁在这个元素上声明了”。
+		 * 所以覆盖必须落在 body 作用域。
+		 *
+		 * 又因为这些 value 的对手里还有：boot 脚本写在 document.body.style 上的内联
+		 * --dsh-content-font-size、以及 html[data-platform=darwin] body 这类 (0,1,2) 特异性的
+		 * 规则，光靠 body 选择器/顺序都不够稳，统一加 !important 才算压得住。
+		 * （!important 只作用于 body 这一层；后代元素自己声明的值仍然优先，不会被误伤。）
+		 */
+		const OVERRIDE_SEL = "body";
+		const IMPORTANT = " !important";
+		/** dsh 自带的三个字号设置：会话内容 / 代码块 / 终端（boot 脚本内联写在 body 上）。 */
+		const CONTENT_SIZE_VARS = ["--dsh-content-font-size", "--dsh-code-font-size", "--dsh-terminal-font-size"];
+
 		/** 自动发现所有 `--dsw-font-*` 的字号/行高（含简写），按 factor 统一缩放。 */
 		function scaledFontCss(factor) {
 			if (Math.abs(factor - 1) < 1e-6) return "";
-			const st = getComputedStyle(document.documentElement);
+			// token 声明在 body 上，所以要从 body 量；量 html 只会拿到空串（缩放从来没生效过）
+			const host = document.body || document.documentElement;
+			if (!host) return "";
+			const st = getComputedStyle(host);
 			const overrides = [];
 			for (let i = 0; i < st.length; i += 1) {
 				const name = st[i];
@@ -140,17 +163,23 @@ window.__ModuleLoader__.load({
 					const size = parseFloat(short[2]) * factor;
 					const lh = parseFloat(short[3]) * factor;
 					const prefix = short[1] || "";
-					overrides.push(name + ": " + prefix + Math.round(size * 10) / 10 + "px/" + Math.round(lh * 10) / 10 + "px " + short[4]);
+					overrides.push(name + ": " + prefix + Math.round(size * 10) / 10 + "px/" + Math.round(lh * 10) / 10 + "px " + short[4] + IMPORTANT);
 					continue;
 				}
 				// 独立的 -font-size / -line-height 子属性
 				if (/-(?:font-size|line-height)$/.test(name)) {
 					const pm = /^([\d.]+)px$/.exec(value);
-					if (pm) overrides.push(name + ": " + Math.round(parseFloat(pm[1]) * factor * 10) / 10 + "px");
+					if (pm) overrides.push(name + ": " + Math.round(parseFloat(pm[1]) * factor * 10) / 10 + "px" + IMPORTANT);
 				}
 			}
+			// 会话内容 / 代码块 / 终端字号由 boot 脚本内联写在 body 上（dsh 自带设置驱动），
+			// 这里按同一比例跟着放大缩小 —— 乘的是 dsh 自己的值，所以不和自带设置打架。
+			for (const name of CONTENT_SIZE_VARS) {
+				const pm = /^([\d.]+)px$/.exec(st.getPropertyValue(name).trim());
+				if (pm) overrides.push(name + ": " + Math.round(parseFloat(pm[1]) * factor * 10) / 10 + "px" + IMPORTANT);
+			}
 			if (overrides.length === 0) return "";
-			return ":root{" + overrides.join(";") + "}";
+			return OVERRIDE_SEL + "{" + overrides.join(";") + "}";
 		}
 
 		function buildStyle(s) {
@@ -159,45 +188,59 @@ window.__ModuleLoader__.load({
 			let code = CODE_PRESETS[s.codeFont] !== undefined ? (s.codeFont === "" ? "" : CODE_PRESETS[s.codeFont]) : (s.codeFont || "");
 			ui = fontFamilyValue(ui);
 			code = fontFamilyValue(code);
-			const root = [];
-			if (ui) root.push("--dsw-font-family:" + ui);
-			if (code) root.push("--ds-font-family-code:" + code);
+			const vars = [];
+			if (ui) vars.push("--dsw-font-family:" + ui + IMPORTANT);
+			if (code) vars.push("--ds-font-family-code:" + code + IMPORTANT);
 			if (s.text) {
-				root.push("--dsw-alias-label-primary:" + s.text);
-				root.push("--dsw-alias-label-primary-inverted:" + s.text);
-				root.push("--dsw-alias-label-secondary:" + hexToRgba(s.text, 0.82));
-				root.push("--dsw-alias-label-tertiary:" + hexToRgba(s.text, 0.66));
-				root.push("--dsw-alias-label-caption:" + hexToRgba(s.text, 0.6));
+				vars.push("--dsw-alias-label-primary:" + s.text + IMPORTANT);
+				vars.push("--dsw-alias-label-primary-inverted:" + s.text + IMPORTANT);
+				vars.push("--dsw-alias-label-secondary:" + hexToRgba(s.text, 0.82) + IMPORTANT);
+				vars.push("--dsw-alias-label-tertiary:" + hexToRgba(s.text, 0.66) + IMPORTANT);
+				vars.push("--dsw-alias-label-caption:" + hexToRgba(s.text, 0.6) + IMPORTANT);
 			}
 			if (s.bg) {
-				root.push("--dsw-alias-bg-base:" + s.bg);
-				root.push("--dsw-alias-bg-layer-1:" + s.bg);
-				root.push("--dsw-alias-bg-layer-2:" + s.bg);
-				root.push("--dsw-alias-bg-layer-3:" + s.bg);
-				root.push("--dsw-alias-bg-module-platform:" + s.bg);
+				vars.push("--dsw-alias-bg-base:" + s.bg + IMPORTANT);
+				vars.push("--dsw-alias-bg-layer-1:" + s.bg + IMPORTANT);
+				vars.push("--dsw-alias-bg-layer-2:" + s.bg + IMPORTANT);
+				vars.push("--dsw-alias-bg-layer-3:" + s.bg + IMPORTANT);
+				vars.push("--dsw-alias-bg-module-platform:" + s.bg + IMPORTANT);
 			}
-			if (root.length) chunks.push(":root{" + root.join(";") + "}");
-			chunks.push(":root{--dsh-content-font-size:" + (s.fontSize || 14) + "px}");
-			const sc = scaledFontCss((s.fontSize || 14) / 14);
-			if (sc) chunks.push(sc);
+			if (vars.length) chunks.push(OVERRIDE_SEL + "{" + vars.join(";") + "}");
 			return chunks.join("\n");
 		}
 
-		let styleTag = null;
-		function applyStyle(s) {
-			let el = styleTag;
+		/*
+		 * 两份 <style>：`base` 放字体/颜色，`scale` 放按比例缩放出来的字号表。
+		 * 分开是为了让缩放那一遍「只清掉自己上一次的缩放结果」再量主题原值 —— 既不会被上一次的缩放
+		 * 滚雪球，又能在量的时候保留 base 里的字体覆盖（--dsw-font-xs-13 这类简写的
+		 * `13px/20px var(--dsw-font-family)` 在 computed value 里就已经把 family 展开固定了，
+		 * 量的时候若不带着字体覆盖，就会把主题默认字体烤进缩放结果里）。
+		 */
+		function ensureStyleTag(id) {
+			let el = document.getElementById(id);
 			if (!el) {
 				el = document.createElement("style");
-				el.id = "dsh-font-style";
+				el.id = id;
 				el.dataset.plugin = "dsh-font";
-				styleTag = el;
 			}
-			el.textContent = s.enabled === false ? "" : buildStyle(s);
-			// 关键：主题等核心样式的 `:root{--ds-font-family-code:…}` / `--dsw-font-family`
-			// 是在插件 apply 阶段（晚于本模块工厂执行）才注入 <head> 的，与本插件同样写在
-			// :root 上，会按文档顺序把本插件覆盖掉。所以每次应用都把 <style> 挪到 <head>
-			// 末尾（appendChild 对已存在节点即“移动到末尾”），保证本插件在级联中靠后、覆盖生效。
-			document.head.appendChild(el);
+			return el;
+		}
+
+		const BASE_STYLE_ID = "dsh-font-style";
+		const SCALE_STYLE_ID = "dsh-font-scale";
+
+		function applyStyle(s) {
+			const base = ensureStyleTag(BASE_STYLE_ID);
+			const scale = ensureStyleTag(SCALE_STYLE_ID);
+			base.textContent = "";
+			scale.textContent = "";
+			if (s.enabled !== false) base.textContent = buildStyle(s);
+			// 顺序仍是「插件靠后」最省心：主题在切主题时可能重新注入自己的 <style>，
+			// 挪到 <head> 末尾（appendChild 对已存在节点即“移动到末尾”）可以顺带压住同特异性的规则。
+			document.head.appendChild(base);
+			document.head.appendChild(scale);
+			if (s.enabled === false) return;
+			scale.textContent = scaledFontCss((s.fontSize || 14) / 14);
 		}
 
 		// 下拉里显示的名字（比直接显示 CSS 字体栈更友好）
@@ -219,6 +262,13 @@ window.__ModuleLoader__.load({
 			couriernew: "Courier New",
 			monospace: "等宽 (monospace)",
 		};
+
+		/** 自定义输入框里显示的字体栈：存的是预设 key 时展开成真正的 CSS 值，免得只看到 "couriernew"。 */
+		function displayStack(presets, raw) {
+			const s = raw || "";
+			if (!s) return "";
+			return presets[s] !== undefined ? presets[s] : s;
+		}
 
 		/* ---------- 入口按钮 ---------- */
 		function FontEntry() {
@@ -285,12 +335,12 @@ window.__ModuleLoader__.load({
 										Object.keys(UI_PRESETS).map((k) => h("option", { key: k, value: k }, UI_LABELS[k] || UI_PRESETS[k])),
 										settings.uiFont && UI_PRESETS[settings.uiFont] === undefined ? h("option", { key: settings.uiFont, value: settings.uiFont }, settings.uiFont) : null
 									) }),
-									h(Field, { label: "界面字体（自定义）", children: h("input", { className: "dsf-input dsf-custom", placeholder: "如：'Noto Sans SC', sans-serif", value: settings.uiFont, onChange: (e) => update({ uiFont: e.target.value }) }) }),
+									h(Field, { label: "界面字体（自定义）", children: h("input", { className: "dsf-input dsf-custom", placeholder: "如：'Noto Sans SC', sans-serif", value: displayStack(UI_PRESETS, settings.uiFont), onChange: (e) => update({ uiFont: e.target.value }) }) }),
 									h(Field, { label: "代码字体", children: h("select", { className: "dsf-select", value: settings.codeFont, onChange: (e) => update({ codeFont: e.target.value }) },
 										Object.keys(CODE_PRESETS).map((k) => h("option", { key: k, value: k }, CODE_LABELS[k] || CODE_PRESETS[k])),
 										settings.codeFont && CODE_PRESETS[settings.codeFont] === undefined ? h("option", { key: settings.codeFont, value: settings.codeFont }, settings.codeFont) : null
 									) }),
-									h(Field, { label: "代码字体（自定义）", children: h("input", { className: "dsf-input dsf-custom", placeholder: "如：'Maple Mono', monospace", value: settings.codeFont, onChange: (e) => update({ codeFont: e.target.value }) }) }),
+									h(Field, { label: "代码字体（自定义）", children: h("input", { className: "dsf-input dsf-custom", placeholder: "如：'Maple Mono', monospace", value: displayStack(CODE_PRESETS, settings.codeFont), onChange: (e) => update({ codeFont: e.target.value }) }) }),
 									h(Field, { label: "字号（全局缩放）", children: h("div", { className: "dsf-stepper" },
 										h("button", { className: "dsf-step", disabled: settings.fontSize <= 10, onClick: () => update({ fontSize: settings.fontSize - 1 }) }, "\u2212"),
 										h("span", { className: "dsf-value" }, settings.fontSize + " px"),
@@ -298,7 +348,7 @@ window.__ModuleLoader__.load({
 									) }),
 									h(Field, { label: "文字颜色", children: h(ColorField, { value: settings.text || "#e6e8ec", onChange: (v) => update({ text: v }) }) }),
 									h(Field, { label: "背景颜色", children: h(ColorField, { value: settings.bg || "", onChange: (v) => update({ bg: v }) }) }),
-									h("div", { className: "dsf-hint" }, "设置会立即全局生效并持久化保存；「字号」按比例缩放全局文本，对左右对照与 Markdown 等视图也生效。文字/背景留空时沿用 dsh 当前主题。"),
+									h("div", { className: "dsf-hint" }, "设置会立即全局生效并持久化保存；「字号」以 14px 为 100%（=不缩放），按比例缩放全局文本 —— 标题、文件列表、左右对照、Markdown 与代码块、终端字号一起跟着变。文字/背景留空时沿用 dsh 当前主题。"),
 									h("div", { className: "dsf-foot" }, h("button", { className: "dsf-btn", onClick: () => setOpen(false) }, "确定"))
 								)
 							),

@@ -1,0 +1,12 @@
+# dsh profile 补丁片段 —— 把本插件 host 半边插进 profile 的插件树。
+#
+# 这是一个组合包层（见 package.json 的 dsh.bundle.patch），按 profile 的
+# package.json 里 dsh.profile.bundles 的顺序在各 bundle 层中应用。
+#
+# 宿主半边只有一条扫描接口（POST /api/plugin-batch.scan）；真正的安装由浏览器
+# 半边调用 dsh 自带的插件管理器远端完成，所以这里不需要注册别的服务。
+#
+# 浏览器半边（lib/client.js）自动发现，见 package.json 的 dsh.client。
+- insert:
+    - id: dsh-batch-install
+      name: dsh-batch-install
