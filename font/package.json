@@ -1,0 +1,27 @@
+{
+  "name": "dsh-font",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./font.mjs",
+  "description": "dsh 全局字体 / 字号 / 颜色插件（功能在 Web 客户端半边）",
+  "files": [
+    "font.mjs",
+    "cordis.patch.yml",
+    "lib",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./font.mjs",
+    "./package.json": "./package.json",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

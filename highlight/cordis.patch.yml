@@ -1,0 +1,5 @@
+# dsh bundle patch: inserts this plugin into a profile's layer stack.
+# name = the npm package specifier (resolved from node_modules after `dsh plugin add`).
+- insert:
+    - id: dsh-highlight
+      name: 'dsh-highlight'

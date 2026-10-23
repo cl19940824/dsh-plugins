@@ -1,0 +1,27 @@
+{
+  "name": "dsh-lan-access",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./lan_access.mjs",
+  "description": "dsh 局域网访问插件（host 半边：带鉴权的反向代理 + 二维码接口；Web 客户端半边：侧边栏入口与面板）",
+  "files": [
+    "lan_access.mjs",
+    "cordis.patch.yml",
+    "lib",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./lan_access.mjs",
+    "./package.json": "./package.json",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

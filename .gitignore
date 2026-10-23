@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+._*
+.AppleDouble
+
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# 插件运行期账本 / 本地状态（不随仓库分发）
+data/
+*.local.json
+*.log
+
+# 包管理器缓存
+.pnpm-store/
+.npm/
+
+# 编辑器 / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

@@ -1,0 +1,27 @@
+{
+  "name": "dsh-review",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./review.mjs",
+  "description": "dsh 待处理改动审查插件（host 半边 + Web 客户端半边）",
+  "files": [
+    "review.mjs",
+    "cordis.patch.yml",
+    "lib",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./review.mjs",
+    "./package.json": "./package.json",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

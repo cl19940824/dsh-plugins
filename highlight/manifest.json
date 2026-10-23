@@ -1,0 +1,10 @@
+{
+  "id": "highlight",
+  "name": "代码高亮补充",
+  "description": "dsh 前端内置的语法高亮未覆盖 dart、objective-c / oc / objc 等语言。本插件在浏览器端对这类代码块补齐关键词高亮（swift 也作兜底），使用与 shiki 一致的主题变量，让答案里的代码块也能正确识别这些常用语言。",
+  "version": "1.0.0",
+  "order": 40,
+  "entry": "highlight.mjs",
+  "patch": "cordis.patch.yml",
+  "requiresRestart": true
+}

@@ -1,0 +1,10 @@
+{
+  "id": "font",
+  "name": "字体 / 字号 / 颜色",
+  "description": "全局自定义界面字体、代码字体、字号缩放、文字颜色与背景颜色，实时生效并持久化保存。入口在「设置 → 常规」页面里（「字体 / 字号 / 颜色」一行）。",
+  "version": "1.0.0",
+  "order": 40,
+  "entry": "font.mjs",
+  "patch": "cordis.patch.yml",
+  "requiresRestart": true
+}

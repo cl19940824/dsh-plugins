@@ -1,0 +1,10 @@
+{
+  "id": "review",
+  "name": "待处理改动审查",
+  "description": "把 dsh 里每次 write / edit / str_replace_editor 的改动自动汇总成文件列表，可对单个差异块、选中的多个块或整个文件执行保留/回退，支持撤销重做；还能导入工作区的 git（VCS）改动。提供单栏 / 左右对照 / Markdown 预览三种视图、文件内搜索、差异块跳转与可复制的行号引用；差异数据持久化存储，重启后可继续审查。",
+  "version": "1.0.0",
+  "order": 30,
+  "entry": "review.mjs",
+  "patch": "cordis.patch.yml",
+  "requiresRestart": true
+}

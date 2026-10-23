@@ -1,0 +1,10 @@
+{
+  "id": "chat_autoscroll",
+  "name": "聊天自动跟随",
+  "description": "DSH 对话页在流式输出（思考/结果）时智能吸附到底部：用户停在底部附近时自动跟随最新内容，往上翻则暂停跟随、读完后滚回底部再继续。纯浏览器半边，不改后端。",
+  "version": "1.0.0",
+  "order": 60,
+  "entry": "chat_autoscroll.mjs",
+  "patch": "cordis.patch.yml",
+  "requiresRestart": true
+}

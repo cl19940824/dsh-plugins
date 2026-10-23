@@ -1,0 +1,27 @@
+{
+  "name": "dsh-highlight",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./highlight.mjs",
+  "description": "为 dsh 代码块补齐 dart / objective-c / oc 等缺失语言的语法高亮",
+  "files": [
+    "highlight.mjs",
+    "cordis.patch.yml",
+    "lib",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./highlight.mjs",
+    "./package.json": "./package.json",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}
