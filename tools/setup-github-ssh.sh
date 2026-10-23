@@ -1,41 +1,40 @@
 #!/usr/bin/env bash
 #
-# dsh-plugins —— 新开发机一键初始化（GitHub SSH 免密推送）
+# dsh-plugins —— 本机 GitHub SSH 配置（非交互；跑完就能在 SourceTree 里 clone / commit / push）
 #
-#   bash tools/setup-github-ssh.sh [目标目录]
+#   bash tools/setup-github-ssh.sh [选项]
 #
-# 干四件事（可反复执行，全部幂等）：
-#   1. 生成**这台机器自己的** GitHub 专用 ed25519 密钥（已存在就复用，绝不覆盖）
+# 干三件事，全部幂等、全程不需要你输入任何东西：
+#   1. 生成这台机器自己的 GitHub 专用 ed25519 密钥（~/.ssh/id_ed25519_github；
+#      已存在就复用，绝不覆盖私钥）
 #   2. 在 ~/.ssh/config 里维护一段带标记的配置：github.com 走 GitHub 官方
-#      ssh.github.com:443（公司网络常把 22 端口掐掉），另留 github-22 备用别名；
-#      **标记段以外的内容一个字都不动**
-#   3. 引导你把公钥贴到 GitHub，并当场用 ssh -T 验证
-#   4. 把仓库 clone 到目标目录（默认 ~/Code/github/dsh-plugins），并把 origin
-#      指到 SSH，之后 git push 不再需要任何凭据
+#      ssh.github.com:443（公司网络常把 22 端口掐掉），另留 github-22 直连别名；
+#      标记段以外的内容一个字都不动
+#   3. 把公钥复制到剪贴板并打印出来，然后当场 ssh -T 验证（只认这把 key，
+#      不会被 ssh-agent 里别的 key 蒙混过关）
 #
-# 只写 ~/.ssh 和你指定的目录；不 sudo、不碰 SourceTree 配置、不碰其它 host、
-# 不改全局 git 身份（那两行命令最后会打给你，自己决定跑不跑）。
+# 它不 clone、不改你的工作区、不碰 SourceTree 配置、不 sudo、不改全局 git 身份。
+# 唯一的人工步骤是把公钥贴到 GitHub 一次（这步没法自动化）；贴完再跑一次本脚本即通过。
 #
 # 选项：
-#   -d, --dir <路径>   clone 到哪（默认 ~/Code/github/dsh-plugins）
-#   -n, --no-clone     只配 SSH，不 clone
-#   -y, --yes          非交互：不等待贴公钥，直接给出结果
-#   -h, --help         看帮助
+#   -d, --dir <路径>  顺便把仓库 clone / 更新到该路径（不给就完全不动你的工作区）
+#       --repo <地址> 覆盖仓库 SSH 地址（默认 git@github.com:cl19940824/dsh-plugins.git）
+#       --no-copy     不往剪贴板复制公钥
+#   -h, --help        看帮助
+#
+# 退出码：0 = 已能推送；1 = 还差把公钥贴到 GitHub；2 = 连不上 GitHub
 #
 set -u
 
 REPO_SSH="git@github.com:cl19940824/dsh-plugins.git"
-REPO_HTTPS="https://github.com/cl19940824/dsh-plugins.git"
 KEYS_URL="https://github.com/settings/keys"
 KEY="$HOME/.ssh/id_ed25519_github"
 CFG="$HOME/.ssh/config"
 BEGIN="# >>> dsh-plugins: GitHub 专用（由 tools/setup-github-ssh.sh 维护）>>>"
 END="# <<< dsh-plugins: GitHub 专用 <<<"
-DEFAULT_DIR="$HOME/Code/github/dsh-plugins"
 
 DIR=""
-DO_CLONE=1
-ASSUME_YES=0
+DO_COPY=1
 
 say()  { printf '%s\n' "$*"; }
 step() { printf '\n==> %s\n' "$*"; }
@@ -48,39 +47,47 @@ usage() {
   exit 0
 }
 
-open_url() {
-  if have open; then open "$1" >/dev/null 2>&1 && return 0; fi
-  if have xdg-open; then xdg-open "$1" >/dev/null 2>&1 && return 0; fi
-  if have explorer.exe; then explorer.exe "$1" >/dev/null 2>&1 && return 0; fi
+# 剪贴板：macOS / Wayland / X11 / Git Bash 各来一手，失败也不算错
+copy_clip() {
+  if have pbcopy;  then printf '%s' "$1" | pbcopy && return 0; fi
+  if have wl-copy; then printf '%s' "$1" | wl-copy && return 0; fi
+  if have xclip;   then printf '%s' "$1" | xclip -selection clipboard && return 0; fi
+  if have clip.exe; then printf '%s' "$1" | clip.exe && return 0; fi
   return 1
+}
+
+# ssh 地址 → 匿名 https 地址（公开仓库在公钥生效前也能先 clone）
+https_of() {
+  case "$1" in
+    git@*:*)  host=${1#git@}; host=${host%%:*}; path=${1#*:}; printf 'https://%s/%s\n' "$host" "$path" ;;
+    ssh://*)  printf '%s\n' "$1" | sed -E 's#^ssh://([^@/]+@)?([^/]+)/#https://\2/#' ;;
+    *)        printf '%s\n' "$1" ;;
+  esac
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    -d|--dir)      shift; [ $# -gt 0 ] || die "--dir 后面要给路径"; DIR="$1" ;;
-    -n|--no-clone) DO_CLONE=0 ;;
-    -y|--yes)      ASSUME_YES=1 ;;
-    -h|--help)     usage ;;
-    -*)            die "未知选项：$1（-h 看帮助）" ;;
-    *)             DIR="$1" ;;
+    -d|--dir)   shift; [ $# -gt 0 ] || die "--dir 后面要给路径"; DIR="$1" ;;
+    --repo)     shift; [ $# -gt 0 ] || die "--repo 后面要给地址"; REPO_SSH="$1" ;;
+    --no-copy)  DO_COPY=0 ;;
+    -h|--help)  usage ;;
+    -*)         die "未知选项：$1（-h 看帮助）" ;;
+    *)          DIR="$1" ;;
   esac
   shift
 done
-[ -n "$DIR" ] || DIR="$DEFAULT_DIR"
 
 have ssh || die "找不到 ssh"
 have ssh-keygen || die "找不到 ssh-keygen"
-have git || die "找不到 git（macOS 上装 Xcode Command Line Tools：xcode-select --install）"
 
 # ---------------------------------------------------------------------------
-# 1. 目录 + 密钥
+# 1. 密钥
 # ---------------------------------------------------------------------------
-step "检查 ~/.ssh 与专用密钥"
+step "GitHub 专用密钥"
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
-
 if [ -f "$KEY" ]; then
-  say "  已存在，复用：$KEY"
+  say "  已存在，复用：${KEY}"
 else
   ssh-keygen -t ed25519 -N "" -C "279347515@qq.com" -f "$KEY" -q || die "生成密钥失败"
   say "  已生成：${KEY}（无口令；想加密钥就跑 ssh-keygen -p -f ${KEY}）"
@@ -137,13 +144,14 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. 公钥登记 + 验证
+# 3. 公钥 + 验证
 # ---------------------------------------------------------------------------
 # 0 = 认证通过；1 = 到了 GitHub 但公钥没登记；2 = 网络没通
-# 钉死用我们这把 key（IdentityAgent=none + -i + IdentitiesOnly）：否则 ssh-agent
-# 里恰好有别的 GitHub key 时会「认证通过」，等重启后 agent 空了推送又挂。
+# 钉死只试我们这把 key、只走 443：-F /dev/null 甩掉 ~/.ssh/config 与 ssh-agent，
+# 否则「本机恰好有别的已登记 GitHub key」时会误报通过，等哪天 agent 空了推送又挂。
 probe() {
-  OUT=$(ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new \
+  OUT=$(ssh -F /dev/null -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new \
+            -o HostName=ssh.github.com -o Port=443 -o User=git \
             -o IdentityAgent=none -o IdentitiesOnly=yes -i "$KEY" \
             -T git@github.com 2>&1 | head -n 2)
   case "$OUT" in
@@ -153,44 +161,39 @@ probe() {
   esac
 }
 
-step "验证 SSH 认证"
-AUTH_OK=0
-if probe; then
-  say "  ✔ 已认证"
-  AUTH_OK=1
+step "验证（只认这把 key）"
+AUTH_RC=0
+probe || AUTH_RC=$?
+PUBKEY=$(cat "$KEY.pub")
+
+if [ "$AUTH_RC" -eq 0 ]; then
+  say "  ✔ 已认证，本机可以直接 push"
 else
-  rc=$?
-  say ""
-  say "  公钥（贴到 $KEYS_URL → New SSH key，Key type 选 Authentication Key）："
-  say ""
-  say "    $(cat "$KEY.pub")"
-  say ""
-  say "  指纹：$(ssh-keygen -lf "$KEY.pub" 2>/dev/null | awk '{print $2}')"
-  say ""
-  if [ "$rc" -eq 2 ]; then
-    warn "没连上 GitHub：${OUT:-连接失败}"
-    warn "443 也被挡的话，试试别名 git@github-22:… 或换网络"
+  if [ "$AUTH_RC" -eq 1 ]; then
+    say "  还差一步：把下面这行公钥贴到 GitHub → 然后重跑本脚本（其余步骤会自动跳过）"
   else
-    open_url "$KEYS_URL" && say "  已尝试打开 GitHub 的 SSH key 页面"
+    say "  没连上 GitHub：${OUT:-连接失败}（443 也被挡的话换网络，或用别名 git@github-22:…）"
   fi
-  if [ "$rc" -eq 1 ] && [ "$ASSUME_YES" -eq 0 ] && [ -t 0 ]; then
-    tries=0
-    while [ "$tries" -lt 3 ]; do
-      printf '  贴好后按回车继续（Ctrl-C 放弃）：'
-      read -r _ || break
-      sleep 1
-      if probe; then say "  ✔ 已认证"; AUTH_OK=1; break; fi
-      tries=$((tries + 1))
-      warn "这次还没通过（刚添加可能要等几秒）"
-    done
+  say ""
+  say "  公钥："
+  say "    $PUBKEY"
+  say "  指纹：$(ssh-keygen -lf "$KEY.pub" 2>/dev/null | awk '{print $2}')"
+  if [ "$DO_COPY" -eq 1 ]; then
+    if copy_clip "$PUBKEY"; then
+      say "  （已复制到剪贴板，直接去 $KEYS_URL 粘贴 → Key type 选 Authentication Key）"
+    else
+      say "  （没能复制到剪贴板，手动复制上面那行）"
+    fi
   fi
+  say ""
+  say "  页面：$KEYS_URL"
 fi
 
 # ---------------------------------------------------------------------------
-# 4. clone / 更新仓库，并把 origin 指向 SSH
+# 4. 可选：顺手 clone / 更新仓库（只在给了 --dir 时做）
 # ---------------------------------------------------------------------------
-if [ "$DO_CLONE" -eq 1 ]; then
-  step "准备仓库：$DIR"
+if [ -n "$DIR" ]; then
+  step "仓库：$DIR"
   if [ -d "$DIR/.git" ]; then
     git -C "$DIR" remote set-url origin "$REPO_SSH"
     say "  已是 git 仓库，origin 已指向 SSH；拉取最新…"
@@ -200,45 +203,43 @@ if [ "$DO_CLONE" -eq 1 ]; then
       warn "拉取失败，稍后自己 git pull"
     fi
   elif [ -e "$DIR" ]; then
-    warn "$DIR 已存在但不是 git 仓库，跳过 clone"
+    warn "$DIR 已存在但不是 git 仓库，跳过"
   else
     mkdir -p "$(dirname "$DIR")"
-    if [ "$AUTH_OK" -eq 1 ]; then
+    if [ "$AUTH_RC" -eq 0 ]; then
       say "  clone 中（SSH）…"
       GIT_TERMINAL_PROMPT=0 git clone "$REPO_SSH" "$DIR" || die "clone 失败"
     else
       # 公钥还没生效也先让你拿到代码：公开仓库匿名 HTTPS clone，再把 origin 指到 SSH
       say "  clone 中（HTTPS，公钥生效前先拿到代码）…"
-      GIT_TERMINAL_PROMPT=0 git -c credential.helper= clone "$REPO_HTTPS" "$DIR" || die "clone 失败"
+      GIT_TERMINAL_PROMPT=0 git -c credential.helper= clone "$(https_of "$REPO_SSH")" "$DIR" || die "clone 失败"
       git -C "$DIR" remote set-url origin "$REPO_SSH"
-      say "  origin 已指向 SSH：公钥登记后 git push 即可用"
+      say "  origin 已指向 SSH"
     fi
   fi
   say "  仓库就绪：$DIR"
 fi
 
 # ---------------------------------------------------------------------------
-# 5. 下一步
+# 5. 下一步（SourceTree 用法）
 # ---------------------------------------------------------------------------
-if [ "$AUTH_OK" -eq 1 ]; then
-  step "搞定，后面都用 SSH 推，不会再要凭据"
+step "下一步"
+if [ "$AUTH_RC" -eq 0 ]; then
+  say "  SourceTree 里直接用 SSH 地址，提交 / 推送一律走按钮，不会再要账号密码："
 else
-  step "本地已配好，还差一步：把上面的公钥加到 GitHub，然后重跑本脚本"
+  say "  贴完公钥、重跑本脚本看到 ✔ 之后："
 fi
-say "  自检：      ssh -T git@github.com"
-say "  日常推送：  git push"
-say "  核对远端：  git remote -v"
+say "    clone：  仓库 → 新建 → 克隆，源地址填 $REPO_SSH"
+say "    已有仓库：仓库设置 → 远程仓库 → URL 改成 $REPO_SSH"
+say "    前提：   SourceTree → 设置 → 通用 → SSH 客户端 = OpenSSH（macOS 默认就是）"
+say "    那个报错上不去的 GitHub HTTPS 账号可以留着不管，也可以删掉（SSH 用不到它）"
 say ""
-say "  建议顺手设一次提交身份（用 GitHub 账号绑定的邮箱，提交才会挂在你的头像下）："
-say "    git config --global user.name \"程朗\""
-say "    git config --global user.email 279347515@qq.com"
-if [ "$DO_CLONE" -eq 1 ] && [ -d "$DIR/.git" ]; then
-  say ""
-  say "  把这批插件装进本机 Harness（bundle 形态要求 dsh >= 0.2.0-rc.2）："
-  say "    python3 ~/.dsh/skills/dsh-plugin-install/scripts/install_plugin.py \"$DIR\" --profile desktop   # 或 --profile web"
-  say "  或者：设置 → 插件 → 批量安装 → 选 \"$DIR\" → 全选 → 安装选中"
+say "  命令行自检：ssh -T git@github.com"
+if have python3 && [ -f "$HOME/.dsh/skills/dsh-plugin-install/scripts/install_plugin.py" ]; then
+  say "  装插件：python3 ~/.dsh/skills/dsh-plugin-install/scripts/install_plugin.py <仓库路径> --profile desktop   # 或 --profile web"
+  say "          或者：设置 → 插件 → 批量安装 → 选仓库文件夹 → 全选 → 安装选中"
 fi
 say ""
-say "  换机 / 重复执行：再跑一次本脚本即可，已完成的步骤会自动跳过。"
+say "  再跑一次本脚本 = 幂等复检（已完成的步骤自动跳过）"
 
-[ "$AUTH_OK" -eq 1 ] || exit 1
+[ "$AUTH_RC" -eq 0 ] || exit "$AUTH_RC"

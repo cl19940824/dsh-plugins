@@ -79,28 +79,32 @@ dsh plugin add link:<本仓库路径>/context_1m
 
 ## 换机器 / 新开发机一键初始化
 
-仓库是公开的，**拉代码不需要凭据**，但 push 需要一把登记到 GitHub 账号的 SSH key。新机器上：
+仓库是公开的，**拉代码不需要凭据**，但 push 需要一把登记到 GitHub 账号的 SSH key。
+在 SourceTree 里用 HTTPS 地址 clone 下来之后（或者任意方式拿到本仓库），跑一次：
 
 ```bash
-# 1) 先匿名把仓库拿下来（HTTPS，不需要任何凭据）
-git clone https://github.com/cl19940824/dsh-plugins.git
-
-# 2) 一键配好这台机器的 GitHub SSH（幂等，可反复跑）
 bash dsh-plugins/tools/setup-github-ssh.sh
 ```
 
-[`tools/setup-github-ssh.sh`](tools/setup-github-ssh.sh) 会做四件事：
+[`tools/setup-github-ssh.sh`](tools/setup-github-ssh.sh) 全程**不需要任何输入**，也不动你的工作区：
 
 1. 生成这台机器**自己的** ed25519 密钥（`~/.ssh/id_ed25519_github`；已存在就复用，绝不覆盖私钥）；
 2. 在 `~/.ssh/config` 里维护一段带标记的配置：公司网络常把 `github.com:22` 掐掉（TCP 连得上、SSH 握手被断），
    所以走 GitHub 官方的 `ssh.github.com:443`，另留 `github-22` 直连别名；**标记段以外的内容一个字不动**，
    公司那套 HTTPS 仓库和 SourceTree 账号也不受影响；
-3. 打印公钥并打开 <https://github.com/settings/keys>，贴好按回车，当场 `ssh -T` 验证
-   （只认这把 key，不会被 ssh-agent 里别的 key 蒙混过关）；
-4. 把仓库 `origin` 指到 SSH 并拉取最新。公钥还没生效时会先用 HTTPS 把代码拿到手，贴好后 `git push` 直接可用。
+3. 把公钥复制到剪贴板、打印出来，并当场 `ssh -T` 验证（只试这把 key、只走 443，
+   跟 ssh-agent 和别的 key 完全隔离，不会误报「已认证」）。
 
-常用开关：`--dir <路径>`（clone 到哪，默认 `~/Code/github/dsh-plugins`）、`--no-clone`（只配 SSH）、
-`--yes`（非交互）、`--help`。
+**唯一的人工步骤**是把那行公钥贴到 <https://github.com/settings/keys> 一次（这步没法自动化）；
+贴完再跑一次脚本，看到 `✔ 已认证` 就完事了 —— 之后 SourceTree 里直接提交、推送，不会再要账号密码。
+
+SourceTree 侧只需要确认两件事：设置 → 通用 → **SSH 客户端 = OpenSSH**（macOS 默认就是）；
+仓库的远程地址用 SSH 形式 `git@github.com:cl19940824/dsh-plugins.git`
+（新建克隆时直接填这个，已有仓库就在「仓库设置 → 远程仓库」里改 URL）。那个报错上不去的
+GitHub HTTPS 账号可以留着不管，也可以删掉 —— SSH 用不到它。
+
+常用开关：`--dir <路径>`（顺便 clone / 更新到该路径，默认完全不碰你的工作区）、`--repo <地址>`（换个仓库）、
+`--no-copy`（不复制到剪贴板）、`--help`。退出码：`0` 已能推送、`1` 还差贴公钥、`2` 连不上 GitHub。
 
 配好之后装插件：
 
@@ -109,6 +113,10 @@ python3 ~/.dsh/skills/dsh-plugin-install/scripts/install_plugin.py <仓库路径
 ```
 
 或者在界面里用 [`batch_install`](batch_install)：设置 → 插件 → **批量安装** → 选仓库文件夹 → 全选 → 安装选中。
+
+> 这个脚本放在公开仓库里也没问题：它只有账号名、邮箱、仓库地址（这些本来就公开），
+> **私钥是本机现生成、永远不出本机**，脚本只写 `~/.ssh`，不 sudo、不装东西、不改 SourceTree。
+> 不想要它的话 `git rm -r tools/` 删掉即可。
 
 ## 目录约定
 
