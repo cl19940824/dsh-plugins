@@ -77,6 +77,39 @@ dsh plugin add link:<本仓库路径>/context_1m
 > 宿主安装树，会以 `MODULE_NOT_FOUND` → `failed to import` 收场。
 > 验证方式：设置 → 插件里看条目是否 `active`。
 
+## 换机器 / 新开发机一键初始化
+
+仓库是公开的，**拉代码不需要凭据**，但 push 需要一把登记到 GitHub 账号的 SSH key。新机器上：
+
+```bash
+# 1) 先匿名把仓库拿下来（HTTPS，不需要任何凭据）
+git clone https://github.com/cl19940824/dsh-plugins.git
+
+# 2) 一键配好这台机器的 GitHub SSH（幂等，可反复跑）
+bash dsh-plugins/tools/setup-github-ssh.sh
+```
+
+[`tools/setup-github-ssh.sh`](tools/setup-github-ssh.sh) 会做四件事：
+
+1. 生成这台机器**自己的** ed25519 密钥（`~/.ssh/id_ed25519_github`；已存在就复用，绝不覆盖私钥）；
+2. 在 `~/.ssh/config` 里维护一段带标记的配置：公司网络常把 `github.com:22` 掐掉（TCP 连得上、SSH 握手被断），
+   所以走 GitHub 官方的 `ssh.github.com:443`，另留 `github-22` 直连别名；**标记段以外的内容一个字不动**，
+   公司那套 HTTPS 仓库和 SourceTree 账号也不受影响；
+3. 打印公钥并打开 <https://github.com/settings/keys>，贴好按回车，当场 `ssh -T` 验证
+   （只认这把 key，不会被 ssh-agent 里别的 key 蒙混过关）；
+4. 把仓库 `origin` 指到 SSH 并拉取最新。公钥还没生效时会先用 HTTPS 把代码拿到手，贴好后 `git push` 直接可用。
+
+常用开关：`--dir <路径>`（clone 到哪，默认 `~/Code/github/dsh-plugins`）、`--no-clone`（只配 SSH）、
+`--yes`（非交互）、`--help`。
+
+配好之后装插件：
+
+```bash
+python3 ~/.dsh/skills/dsh-plugin-install/scripts/install_plugin.py <仓库路径> --profile desktop   # web 外壳用 --profile web
+```
+
+或者在界面里用 [`batch_install`](batch_install)：设置 → 插件 → **批量安装** → 选仓库文件夹 → 全选 → 安装选中。
+
 ## 目录约定
 
 每个插件目录都是一份完整、自包含的插件包：
