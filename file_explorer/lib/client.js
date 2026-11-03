@@ -401,9 +401,10 @@ window.__ModuleLoader__.load({
           continue
         }
 
-        // 字符串（objc 的 @"..."）
-        const at = cfg.at && ch === '@' && cfg.quotes.includes(next)
-        if (cfg.quotes.includes(ch) || at) {
+        // 字符串（objc 的 @"..."）；'…' 在几乎所有语言里都是字符串，统一认。
+        const quoteChars = cfg.quotes.includes("'") ? cfg.quotes : `${cfg.quotes}'`
+        const at = cfg.at && ch === '@' && quoteChars.includes(next)
+        if (quoteChars.includes(ch) || at) {
           const quote = at ? next : ch
           const start = at ? i + 1 : i
           let j = start + 1
@@ -531,8 +532,8 @@ window.__ModuleLoader__.load({
       '.fx-md-hr{color:var(--dsw-alias-border-l2,rgba(255,255,255,.28))}',
       '.fx-cm{color:var(--shiki-token-comment,#7f8c98)}',
       '.fx-ty{color:var(--shiki-token-parameter,#5dd8ff)}',
-      '.fx-fn{color:var(--shiki-token-function,#41a1c0)}',
-      '.fx-var{color:color-mix(in oklab,var(--shiki-token-parameter,#5dd8ff) 45%,var(--shiki-token-function,#41a1c0) 55%)}',
+      '.fx-fn{color:color-mix(in oklab,var(--shiki-token-function,#41a1c0) 55%,var(--shiki-token-keyword,#fc5fa3) 45%)}',
+      '.fx-var{color:color-mix(in oklab,var(--shiki-token-parameter,#5dd8ff) 42%,var(--shiki-foreground,#dfdfe0) 58%)}',
     ].join('')
 
     /* ------------------------------------------------------------------ */

@@ -1,6 +1,6 @@
 {
   "name": "dsh-file-explorer",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Xcode 风格的左侧文件浏览器：侧栏多一个「文件」入口，打开后是工作区文件树 + 带行号和语法高亮的可编辑预览；文件夹只展开收起，文件可改可存",
