@@ -20,9 +20,13 @@ dsh 前端内置的语法高亮（shiki）没覆盖 **dart、objective-c / oc / 
 ## 工作原理（要点）
 
 - **定位**：前端代码块不是 `<code class="language-xxx">`（类名是 hash 过的），而是
-  `.md-code-block` 容器——语言显示在 `[data-code-block-banner]` 的第一个子节点
-  （infostring），正文在 `[data-code-block-content]` 里的 `<code>`。代码按语言 infostring
-  命中目标。
+  `.md-code-block` 容器，正文在 `[data-code-block-content]` 里的 `<code>`。
+- **语言名不可靠（关键）**：banner 里那行字是
+  `span.language = F_(lang) ? lang : i.codeLabel` —— `F_` 只认 shiki 内置语言，所以
+  ```` ```objc ```` 显示成「代码块」，**fence 语言在 DOM 里直接丢了**。因此不靠 banner
+  认语言：先看 banner 是不是真语言名，不是就对正文打分（`@interface` / `#import <` /
+  `NS*` / `[super …]` / `- (` 判 objective-c，`@override` / `import 'package:'` /
+  `Widget` 判 dart），过阈值才上色，避免把普通文本块染色。
 - **应对流式渲染**：正文会被 React 反复重写，直接改 `innerHTML` 会把内容冻在第一帧。
   所以用 `MutationObserver`（含 `characterData`）+ 防抖，等正文稳定后再上色。
 - **保行号**：带行号的块正文是 `<span class="line">` 列表，逐行上色以保住行号。
@@ -31,7 +35,7 @@ dsh 前端内置的语法高亮（shiki）没覆盖 **dart、objective-c / oc / 
   - `#` 预处理指令 / `@` 指令 / 关键字 → 关键词色；
   - 内置类型 + 大写开头的标识符 → 类型色（`NSString` / `NSInteger` / `Circle`…一视同仁；
     这样 `NSString` 和 `NSInteger` 不会再一个有颜色一个没有）；
-  - 后面紧跟 `(` 的标识符 → 函数色。
+  - 后面紧跟 `(` 或 `:` 的标识符 → 函数色（`:` 覆盖 OC 的 `foo:bar:` 选择器）。
 
 ## 数据 / 依赖
 

@@ -5,29 +5,33 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 
-		// dsh 前端内置 shiki 只对 Ro 别名表里那批语言做高亮；dart / objective-c / oc /
-		// objc 不在其中，代码块会以纯文本渲染。本插件在浏览器端为这些缺失语言补高亮，
-		// 配色走与 shiki 一致的 --shiki-token-* 主题变量。
+		// dsh 前端内置 shiki 没有 objective-c / dart 语法，这些代码块会以纯文本渲染。
+		// 本插件在浏览器端给它们补词法高亮，配色走与 shiki 一致的 --shiki-token-* 变量。
 		//
-		// 定位（踩过的坑）：
-		//   1. 前端代码块不是 <code class="language-xxx">。它是 .md-code-block 容器：
-		//      语言显示在 [data-code-block-banner] 的第一个子节点（infostring），正文在
-		//      [data-code-block-content] 里的 <code>。按 language-* 类名找不到目标。
-		//   2. 流式输出时正文会被 React 反复重写；直接改 innerHTML 会把内容冻在第一帧。
-		//      所以用 MutationObserver（含 characterData）+ 防抖：等正文稳定下来再上色。
-		//   3. 已被 shiki 上色的块（含 span[style] / .tok-）直接跳过。
-		//   4. 带行号的块正文是 <span class="line"> 列表，逐行上色以保住行号。
+		// 定位（踩过的坑，2026-11 版 dsh 实测）：
+		//   1. 代码块可能不是 <code class="language-xxx">，而是 .md-code-block 容器：
+		//      [data-code-block-banner] 里放语言名，[data-code-block-content] 里放正文。
+		//   2. 关键：不认识的 fence 语言**不会**进 banner。渲染函数是
+		//        span.language = F_(lang) ? lang : i.codeLabel      // F_ 只认已知语言
+		//      所以 ```objc 的 banner 显示的是「代码块」，语言信息在 DOM 里直接丢了。
+		//      （另一条 infostring 分支才会原样输出 lang，这里兼容两种。）
+		//   3. 既然拿不到语言名，就用内容识别：先看 banner 里是不是真语言名，不是的话
+		//      对正文打分（@interface / #import / NS* / [self ...] / import 'package: …），
+		//      分数够才动手，避免把 log、伪代码之类的纯文本块染色。
+		//   4. 已被 shiki 上色的块（含 span[style] / .tok-）一律跳过，绝不重复覆盖。
+		//   5. 流式输出时正文会被 React 反复重写，所以用 MutationObserver + 防抖，
+		//      等稳定后再上色；带行号的块是 <span class="line"> 列表，逐行处理保住行号。
 		//
-		// 着色规则（不是白名单，是分类）：
-		//   * 注释 / 字符串 / 数字         —— 词法识别
-		//   * #预处理指令 / @指令 / 关键字  —— 关键词色
-		//   * 内置类型 + 大写开头的标识符   —— 类型色（NSString / NSInteger / Circle… 一视同仁）
-		//   * 后面紧跟 "(" 的标识符         —— 函数色
-		// 这样 NSString 和 NSInteger 不会再一个有颜色一个没有。
+		// 着色规则（分类而非白名单）：
+		//   * 注释 / 字符串 / 数字          —— 词法识别
+		//   * #预处理指令 / @指令 / 关键字   —— 关键词色
+		//   * 内置类型 + 大写开头的标识符    —— 类型色（NSString / NSInteger / Circle 一视同仁）
+		//   * 后面紧跟 "(" 或 ":" 的标识符   —— 函数色（覆盖 OC 的 foo:bar: 选择器）
 
 		var _started = false;
 
-		// 颜色槽位全部取自 shiki 的 css-variables 主题（dsh 的 --shiki-token-* 变量）。
+		// 颜色槽位全部取自 shiki 的 css-variables 主题（dsh 的 --shiki-token-* 变量），
+		// 因此主题换色时这里自动跟随，不需要二次映射。
 		var C = {
 			keyword: "var(--shiki-token-keyword)",
 			type: "var(--shiki-token-function)",
@@ -45,8 +49,7 @@ window.__ModuleLoader__.load({
 			return out;
 		}
 
-		// 语言标记别名 → 规则表键。swift / kotlin 前端 shiki 已内置，
-		// shiki 已上色的块会被第 3 条跳过，这里留作兜底。
+		// banner 里出现这些词才认为是“真语言名”，否则是「代码块」之类的占位标题。
 		var ALIAS = {
 			dart: "dart",
 			dartlang: "dart",
@@ -59,7 +62,6 @@ window.__ModuleLoader__.load({
 			swift: "swift",
 		};
 
-		// 关键字（关键词色）
 		var KW = {
 			dart: words(
 				"abstract as assert async await break case catch class const continue covariant default deferred do " +
@@ -71,7 +73,8 @@ window.__ModuleLoader__.load({
 				"auto break case char const continue default do else enum extern for goto if inline register restrict " +
 					"return sizeof static struct switch typedef union volatile while self super " +
 					"@interface @implementation @end @protocol @property @synthesize @dynamic @selector @class @import " +
-					"@autoreleasepool @public @private @protected @optional @required @encode @defs @try @catch @finally @throw"
+					"@autoreleasepool @public @private @protected @optional @required @encode @defs @try @catch @finally @throw " +
+					"@synchronized @compatibility_alias @available @end"
 			),
 			swift: words(
 				"associatedtype class deinit enum extension fileprivate func import init inout internal let open " +
@@ -82,21 +85,22 @@ window.__ModuleLoader__.load({
 			),
 		};
 
-		// 内置类型（类型色）。注意：NSString / NSObject 这类不需要列举 —— 靠下面
-		// “大写开头即类型”的规则统一覆盖，所以不会再出现列了就亮、没列就暗。
+		// 内置类型（类型色）。NSString / UIView 这类不列举 —— 靠“大写开头即类型”统一覆盖。
 		var TY = {
 			dart: words(
-				"int double num String bool List Set Map Future Stream Object Never Iterable Duration DateTime RegExp Symbol Function void dynamic"
+				"int double num String bool List Set Map Future Stream Object Never Iterable Duration DateTime RegExp " +
+					"Symbol Function void dynamic Widget BuildContext State"
 			),
 			objc: words(
-				"void int char float double long short signed unsigned id SEL Class IMP instancetype BOOL NSInteger NSUInteger CGFloat"
+				"void int char float double long short signed unsigned id SEL Class IMP instancetype BOOL NSInteger " +
+					"NSUInteger CGFloat CGRect CGSize CGPoint NSRange NSError dispatch_queue_t"
 			),
 			swift: words(
-				"Int Int8 Int16 Int32 Int64 UInt UInt8 UInt16 UInt32 UInt64 Double Float Bool String Character Array Dictionary Set Optional Result Void Never Error"
+				"Int Int8 Int16 Int32 Int64 UInt UInt8 UInt16 UInt32 UInt64 Double Float Bool String Character Array " +
+					"Dictionary Set Optional Result Void Never Error"
 			),
 		};
 
-		// 字面量常量（常量色）
 		var CO = {
 			dart: words("true false null"),
 			objc: words("true false nil NULL YES NO"),
@@ -112,74 +116,120 @@ window.__ModuleLoader__.load({
 				.replace(/'/g, "&#39;");
 		}
 
-		function span(text, color) {
-			return '<span class="dsh-hl" style="color:' + color + '">' + text + "</span>";
+		function span(html, color) {
+			return '<span class="dsh-hl" style="color:' + color + '">' + html + "</span>";
 		}
 
-		// 在 escapeHtml 之后的文本上做词法扫描。只有一个捕获组（字符串），
-		// 其余分类靠 m 的首字符 + offset 判断。
-		var TOKEN_RE =
-			/(&quot;[^\n]*?&quot;|&#39;[^\n]*?&#39;)|\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[A-Za-z_]\w*|@[A-Za-z_]\w*|\b\d[\w.]*\b|\w+/g;
+		// 单遍扫描：注释 / 字符串（含 @"..."）/ 预处理 / @指令 / 数字 / 标识符 / 其它。
+		var RE =
+			/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(@"(?:[^"\\\n]|\\.)*"|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|(#[A-Za-z_]\w*)|(@[A-Za-z_]\w*)|(\b\d[\w.]*\b)|([A-Za-z_$][\w$]*)|([\s\S])/g;
 
-		function tokenize(text, lang) {
+		function colorizeText(text, lang) {
 			var kw = KW[lang] || {};
 			var ty = TY[lang] || {};
 			var co = CO[lang] || {};
-			return text.replace(TOKEN_RE, function (m, q, offset) {
-				if (q !== undefined) return span(m, C.string); // 字符串字面量
-				var c = m.charAt(0);
-				if (c === "/") return span(m, C.comment); // // 或 /* 注释
-				if (c === "#" || c === "@") return span(m, C.keyword); // 预处理 / @指令
-				if (c >= "0" && c <= "9") return span(m, C.constant); // 数字
-				if (co[m]) return span(m, C.constant);
-				if (kw[m]) return span(m, C.keyword);
-				if (ty[m]) return span(m, C.type);
-				if (c >= "A" && c <= "Z") return span(m, C.type); // 大写开头 → 类型/类名
-				if (/^\s*\(/.test(text.slice(offset + m.length))) return span(m, C.fn); // 函数调用
-				return m;
-			});
+			var out = "";
+			var last = 0;
+			var m;
+			RE.lastIndex = 0;
+			while ((m = RE.exec(text)) !== null) {
+				if (m.index > last) out += escapeHtml(text.slice(last, m.index));
+				last = RE.lastIndex;
+				if (m[1]) {
+					out += span(escapeHtml(m[1]), C.comment);
+				} else if (m[2]) {
+					out += span(escapeHtml(m[2]), C.string);
+				} else if (m[3] || m[4]) {
+					out += span(escapeHtml(m[0]), C.keyword);
+				} else if (m[5]) {
+					out += span(escapeHtml(m[0]), C.constant);
+				} else if (m[6]) {
+					var name = m[0];
+					// 看后一个非空白字符：`foo(` 是调用，`foo:` 是 OC 选择器。
+					var rest = text.slice(RE.lastIndex);
+					var next = rest.charAt(rest.match(/^\s*/)[0].length);
+					if (co[name]) out += span(escapeHtml(name), C.constant);
+					else if (kw[name]) out += span(escapeHtml(name), C.keyword);
+					else if (ty[name] || /^[A-Z]/.test(name)) out += span(escapeHtml(name), C.type);
+					else if (next === "(" || next === ":") out += span(escapeHtml(name), C.fn);
+					else out += escapeHtml(name);
+				} else {
+					out += escapeHtml(m[0]);
+				}
+			}
+			if (last < text.length) out += escapeHtml(text.slice(last));
+			return out;
+		}
+
+		// 内容识别：给每个候选语言打分，分高且过阈值才认。
+		// 阈值 4：单个 @property 之类的偶然命中（1~2 分）不会误伤纯文本块。
+		function detect(text) {
+			var score = { objc: 0, dart: 0 };
+			if (/(^|\n)[ \t]*@(interface|implementation|property|protocol|end|synthesize|dynamic|class|selector|autoreleasepool|try|catch|throw)\b/.test(text))
+				score.objc += 5;
+			if (/(^|\n)[ \t]*#import\s*[<"]/.test(text)) score.objc += 3;
+			if (/(^|\n)[ \t]*-\s*\(/.test(text)) score.objc += 2;
+			if (/\bNS[A-Z]\w*/.test(text)) score.objc += 2;
+			if (/\b(nonatomic|strong|weak|copy|assign|readonly|readwrite)\s*[,)]/.test(text)) score.objc += 2;
+			if (/\[(super|self)\b|\]\]|\bself\.[A-Za-z_]\w*/.test(text)) score.objc += 1;
+			if (/@override\b/.test(text)) score.dart += 3;
+			if (/(^|\n)[ \t]*import\s+['"]package:/.test(text)) score.dart += 4;
+			if (/\b(Widget|StatelessWidget|StatefulWidget)\b/.test(text)) score.dart += 3;
+			if (/\b(Future|Stream|FutureBuilder|setState|BuildContext)\b/.test(text)) score.dart += 1;
+			if (score.objc >= 4 && score.objc >= score.dart) return "objc";
+			if (score.dart >= 4) return "dart";
+			return null;
+		}
+
+		function langOf(block) {
+			var banner = block.querySelector("[data-code-block-banner]");
+			if (!banner) return null;
+			var candidates = banner.querySelectorAll("*");
+			for (var i = 0; i < candidates.length && i < 6; i++) {
+				var t = candidates[i].textContent.trim().toLowerCase();
+				if (ALIAS[t]) return ALIAS[t];
+				if (t.indexOf("@") === 0) return null;
+			}
+			return null;
 		}
 
 		// 已处理缓存：key 是 <code> 元素，value 是上次上色时的 textContent。
 		var handled = new WeakMap();
 
-		function colorize(code, lang) {
+		function paint(code, lang) {
 			var lines = code.querySelectorAll("span.line");
 			if (lines.length > 0) {
 				// 带行号的块：逐行上色，保住 <span class="line"> 与行号计数器。
 				for (var i = 0; i < lines.length; i++) {
 					var line = lines[i];
-					line.innerHTML = tokenize(escapeHtml(line.textContent), lang);
+					line.innerHTML = colorizeText(line.textContent, lang);
 				}
 			} else {
-				code.innerHTML = tokenize(escapeHtml(code.textContent), lang);
+				code.innerHTML = colorizeText(code.textContent, lang);
 			}
 		}
 
 		function highlightBlock(block) {
-			var banner = block.querySelector("[data-code-block-banner]");
 			var content = block.querySelector("[data-code-block-content]");
-			if (!banner || !content) return;
-
-			var info = banner.firstElementChild;
-			var lang = info ? info.textContent.trim().toLowerCase() : "";
-			var key = ALIAS[lang];
-			if (!key) return;
-
+			if (!content) return;
 			var code = content.querySelector("code");
 			if (!code) return;
 
-			// 已被 shiki 上色（内置语言，如 swift / kotlin）就不重复处理。
+			// 已被 shiki 上色（内置语言）就不重复处理。
 			if (code.querySelector("span[style], .tok-") != null) return;
 
 			var text = code.textContent;
-			if (!text) return;
+			if (!text || !text.trim()) return;
 
-			var prev = handled.get(code);
-			if (prev === text) return;
+			var lang = langOf(block) || detect(text);
+			if (!lang) return;
+
+			// 内容没变且我们的 span 还在，跳过；React 若把 innerHTML 重写回纯文本，
+			// .dsh-hl 消失 → 即使 textContent 相同也重新上色。
+			if (handled.get(code) === text && code.querySelector(".dsh-hl")) return;
 			handled.set(code, text);
 
-			colorize(code, key);
+			paint(code, lang);
 		}
 
 		function scan() {
@@ -193,7 +243,7 @@ window.__ModuleLoader__.load({
 			_pending = window.setTimeout(function () {
 				_pending = null;
 				scan();
-			}, 600);
+			}, 400);
 		}
 
 		function install() {
