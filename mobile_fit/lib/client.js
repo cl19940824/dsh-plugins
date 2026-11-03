@@ -66,6 +66,11 @@ window.__ModuleLoader__.load({
 			'  .dshm-fab i { display: block; width: 17px; height: 2px; border-radius: 1px; background: currentColor; margin: 2.2px 0; }',
 			'  @media (max-width: ' + BREAKPOINT + 'px) { body:not(.dshm-open) .dshm-fab { display: flex; } }',
 			'  [class*="composer"], [class*="Composer"] { padding-bottom: env(safe-area-inset-bottom); }',
+			'  /* 给左上角的 ☰ 让出位置，别压住标题行 */',
+			'  header[class*="_header"] { padding-left: 62px !important; }',
+			'  /* iOS 在字号小于 16px 的输入框聚焦时会自动放大整个页面 */',
+			'  input:not([type="checkbox"]):not([type="radio"]), textarea, select, [contenteditable="true"] { font-size: 16px !important; }',
+			'  html { -webkit-text-size-adjust: 100%; }',
 			'}'
 		].join("\n");
 
