@@ -24,3 +24,7 @@ data/
 *.swp
 *.swo
 *~
+
+# Xcode
+**/xcuserdata/
+**/*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
