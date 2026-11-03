@@ -32,10 +32,14 @@ window.__ModuleLoader__.load({
 
 		// 颜色槽位全部取自 shiki 的 css-variables 主题（dsh 的 --shiki-token-* 变量），
 		// 因此主题换色时这里自动跟随，不需要二次映射。
+		// 语义分层对齐 Xcode：关键字粉、类型浅蓝、方法/选择器青、变量蓝灰、字符串红、
+		// 数字土黄、注释灰。shiki 只有 9 个 token 变量、没有“变量”槽，变量色由
+		// 类型色与正文色混合而来（color-mix 在主题里随深浅自动适配）。
 		var C = {
 			keyword: "var(--shiki-token-keyword)",
-			type: "var(--shiki-token-function)",
+			type: "var(--shiki-token-parameter)",
 			fn: "var(--shiki-token-function)",
+			varName: "color-mix(in oklab, var(--shiki-token-parameter) 60%, var(--shiki-foreground) 40%)",
 			constant: "var(--shiki-token-constant)",
 			string: "var(--shiki-token-string)",
 			comment: "var(--shiki-token-comment)",
@@ -72,6 +76,8 @@ window.__ModuleLoader__.load({
 			objc: words(
 				"auto break case char const continue default do else enum extern for goto if inline register restrict " +
 					"return sizeof static struct switch typedef union volatile while self super " +
+					"nonatomic atomic strong weak copy assign retain readonly readwrite nullable nonnull " +
+					"unsafe_unretained getter setter direct " +
 					"@interface @implementation @end @protocol @property @synthesize @dynamic @selector @class @import " +
 					"@autoreleasepool @public @private @protected @optional @required @encode @defs @try @catch @finally @throw " +
 					"@synchronized @compatibility_alias @available @end"
@@ -116,13 +122,17 @@ window.__ModuleLoader__.load({
 				.replace(/'/g, "&#39;");
 		}
 
-		function span(html, color) {
-			return '<span class="dsh-hl" style="color:' + color + '">' + html + "</span>";
+		function span(html, color, kind) {
+			// data-k 只用于调试/截图核对（不影响渲染）。
+			return '<span class="dsh-hl" data-k="' + kind + '" style="color:' + color + '">' + html + "</span>";
 		}
 
 		// 单遍扫描：注释 / 字符串（含 @"..."）/ 预处理 / @指令 / 数字 / 标识符 / 其它。
 		var RE =
 			/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(@"(?:[^"\\\n]|\\.)*"|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')|(#[A-Za-z_]\w*)|(@[A-Za-z_]\w*)|(\b\d[\w.]*\b)|([A-Za-z_$][\w$]*)|([\s\S])/g;
+
+		// `@interface Foo` / `@implementation Foo` 后面那个名字是类型，不是方法。
+		var DECL = words("@interface @implementation @protocol @class @compatibility_alias");
 
 		function colorizeText(text, lang) {
 			var kw = KW[lang] || {};
@@ -131,28 +141,41 @@ window.__ModuleLoader__.load({
 			var out = "";
 			var last = 0;
 			var m;
+			var lastWord = "";
 			RE.lastIndex = 0;
 			while ((m = RE.exec(text)) !== null) {
 				if (m.index > last) out += escapeHtml(text.slice(last, m.index));
 				last = RE.lastIndex;
 				if (m[1]) {
-					out += span(escapeHtml(m[1]), C.comment);
+					out += span(escapeHtml(m[1]), C.comment, "comment");
 				} else if (m[2]) {
-					out += span(escapeHtml(m[2]), C.string);
+					out += span(escapeHtml(m[2]), C.string, "string");
 				} else if (m[3] || m[4]) {
-					out += span(escapeHtml(m[0]), C.keyword);
+					out += span(escapeHtml(m[0]), C.keyword, "keyword");
+					lastWord = m[0];
 				} else if (m[5]) {
-					out += span(escapeHtml(m[0]), C.constant);
+					out += span(escapeHtml(m[0]), C.constant, "number");
 				} else if (m[6]) {
 					var name = m[0];
-					// 看后一个非空白字符：`foo(` 是调用，`foo:` 是 OC 选择器。
+					// 前后各看一个非空白字符，判断这个名字是什么角色：
+					//   `foo(` 调用  `foo:` / `foo]` OC 选择器  `) foo {` 方法定义
 					var rest = text.slice(RE.lastIndex);
 					var next = rest.charAt(rest.match(/^\s*/)[0].length);
-					if (co[name]) out += span(escapeHtml(name), C.constant);
-					else if (kw[name]) out += span(escapeHtml(name), C.keyword);
-					else if (ty[name] || /^[A-Z]/.test(name)) out += span(escapeHtml(name), C.type);
-					else if (next === "(" || next === ":") out += span(escapeHtml(name), C.fn);
-					else out += escapeHtml(name);
+					var prev = "";
+					for (var k = m.index - 1; k >= 0; k--) {
+						if (!/\s/.test(text.charAt(k))) {
+							prev = text.charAt(k);
+							break;
+						}
+					}
+					var isMethod = next === "(" || next === ":" || next === "]" || (next === "{" && prev === ")");
+					var isDecl = DECL[lastWord] === 1;
+					if (co[name]) out += span(escapeHtml(name), C.constant, "constant");
+					else if (kw[name]) out += span(escapeHtml(name), C.keyword, "keyword");
+					else if (isDecl || ty[name] || /^[A-Z]/.test(name)) out += span(escapeHtml(name), C.type, "type");
+					else if (isMethod) out += span(escapeHtml(name), C.fn, "method");
+					else out += span(escapeHtml(name), C.varName, "var");
+					lastWord = name;
 				} else {
 					out += escapeHtml(m[0]);
 				}
