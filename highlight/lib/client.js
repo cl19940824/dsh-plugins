@@ -34,12 +34,12 @@ window.__ModuleLoader__.load({
 		// 因此主题换色时这里自动跟随，不需要二次映射。
 		// 语义分层对齐 Xcode：关键字粉、类型浅蓝、方法/选择器青、变量蓝灰、字符串红、
 		// 数字土黄、注释灰。shiki 只有 9 个 token 变量、没有“变量”槽，变量色由
-		// 类型色与正文色混合而来（color-mix 在主题里随深浅自动适配）。
+		// 类型色与方法色混合而来（介于青与蓝之间，深浅主题都稳，不依赖背景）。
 		var C = {
 			keyword: "var(--shiki-token-keyword)",
 			type: "var(--shiki-token-parameter)",
 			fn: "var(--shiki-token-function)",
-			varName: "color-mix(in oklab, var(--shiki-token-parameter) 60%, var(--shiki-foreground) 40%)",
+			varName: "color-mix(in oklab, var(--shiki-token-parameter) 45%, var(--shiki-token-function) 55%)",
 			constant: "var(--shiki-token-constant)",
 			string: "var(--shiki-token-string)",
 			comment: "var(--shiki-token-comment)",
