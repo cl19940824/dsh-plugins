@@ -35,14 +35,15 @@ window.__ModuleLoader__.load({
 			'    transform: translateX(-102%);',
 			'    transition: transform .22s cubic-bezier(.32,.72,0,1);',
 			'    background: var(--dsw-alias-bg-base, #17171a);',
-			'    box-shadow: 8px 0 32px rgba(0,0,0,.45);',
+			'    border-radius: 0 18px 18px 0;',
+			'    box-shadow: 12px 0 48px rgba(0,0,0,.72);',
 			'    padding-top: env(safe-area-inset-top);',
 			'    padding-bottom: env(safe-area-inset-bottom);',
 			'  }',
 			'  body.dshm-open [class*="_sidebarCol"] { transform: none; }',
 			'  .dshm-mask {',
 			'    position: fixed; inset: 0; z-index: 65;',
-			'    background: rgba(0,0,0,.48);',
+			'    background: rgba(0,0,0,.62);',
 			'    opacity: 0; pointer-events: none;',
 			'    transition: opacity .22s ease;',
 			'  }',
@@ -51,6 +52,19 @@ window.__ModuleLoader__.load({
 			'  table { display: block; overflow-x: auto; max-width: 100%; }',
 			'  img { max-width: 100%; height: auto; }',
 			'  [class*="_dialog"] { max-width: calc(100vw - 24px) !important; max-height: calc(100dvh - 48px) !important; }',
+			'  .dshm-fab {',
+			'    position: fixed;',
+			'    top: calc(env(safe-area-inset-top) + 9px); left: 12px;',
+			'    width: 40px; height: 40px; border-radius: 20px;',
+			'    display: none; flex-direction: column; align-items: center; justify-content: center;',
+			'    z-index: 80; padding: 0; cursor: pointer;',
+			'    color: var(--dsw-alias-label-primary, #1b1b1f);',
+			'    background: var(--dsw-alias-bg-elevated, var(--dsw-alias-bg-base, #1f1f24));',
+			'    border: 1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.28));',
+			'    box-shadow: 0 4px 16px rgba(0,0,0,.28);',
+			'  }',
+			'  .dshm-fab i { display: block; width: 17px; height: 2px; border-radius: 1px; background: currentColor; margin: 2.2px 0; }',
+			'  @media (max-width: ' + BREAKPOINT + 'px) { body:not(.dshm-open) .dshm-fab { display: flex; } }',
 			'  [class*="composer"], [class*="Composer"] { padding-bottom: env(safe-area-inset-bottom); }',
 			'}'
 		].join("\n");
@@ -60,6 +74,7 @@ window.__ModuleLoader__.load({
 
 		var started = false;
 		var mask = null;
+		var fab = null;
 		var observer = null;
 		var mq = null;
 		var scheduled = 0;
@@ -105,6 +120,11 @@ window.__ModuleLoader__.load({
 			}, 40);
 		}
 
+		function expand() {
+			var open = findByLabel(OPEN_LABEL);
+			if (open) open.click();
+		}
+
 		function collapse() {
 			var close = findByLabel(CLOSE_LABEL);
 			if (close) close.click();
@@ -119,6 +139,22 @@ window.__ModuleLoader__.load({
 			mask.addEventListener("click", collapse);
 			document.body.appendChild(mask);
 			return mask;
+		}
+
+		function ensureFab() {
+			if (fab && fab.isConnected) return fab;
+			fab = document.createElement("button");
+			fab.type = "button";
+			fab.className = "dshm-fab";
+			fab.setAttribute("aria-label", "打开会话列表");
+			for (var i = 0; i < 3; i++) fab.appendChild(document.createElement("i"));
+			fab.addEventListener("click", function (event) {
+				event.preventDefault();
+				event.stopPropagation();
+				expand();
+			});
+			document.body.appendChild(fab);
+			return fab;
 		}
 
 		function onDocumentClick(event) {
@@ -172,6 +208,7 @@ window.__ModuleLoader__.load({
 
 			function boot() {
 				ensureMask();
+				ensureFab();
 				sync();
 				observer = new MutationObserver(scheduleSync);
 				observer.observe(document.body, {
