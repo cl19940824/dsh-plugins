@@ -1,7 +1,7 @@
 # dsh-plugins
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（下称 dsh）的第三方插件集，
-共 **11 个插件**。每个插件都是一份「宿主半边 + Web 客户端半边」的完整包：宿主半边在 Node 里采集数据、
+共 **12 个插件**。每个插件都是一份「宿主半边 + Web 客户端半边」的完整包：宿主半边在 Node 里采集数据、
 挂路由、改 profile 配置；客户端半边挂进启动图，往 Web 界面注入入口、面板或勾选框。
 
 > 本仓库是社区插件集，与 DeepSeek 官方无关。插件通过 dsh 公开的 bundle / client-modules
@@ -11,23 +11,31 @@
 
 | 目录 | 包名 | 干什么 | 形态 | 界面入口 |
 | --- | --- | --- | --- | --- |
-| `usage/` | `dsh-usage` | 采集模型返回的 usage，按「天 × 模型」统计总 token，堆叠柱状图看各模型用量与占比 | legacy | 左下角（设置按钮上方） |
-| `lan_access/` | `dsh-lan-access` | 带鉴权的反向代理 + 二维码接口，手机扫码在局域网里打开同一套界面（**默认关闭**） | legacy | 侧边栏 |
-| `review/` | `dsh-review` | 把 agent 每次 write / edit 的改动汇总成差异账本，逐块「保留 / 回退」，也能导入工作区 git 改动 | legacy | 侧边栏 |
-| `font/` | `dsh-font` | 全局界面字体 / 代码字体 / 字号缩放 / 文字色 / 背景色 | legacy | 设置 → 常规 |
-| `highlight/` | `dsh-highlight` | 给 shiki 未覆盖的语言（dart / objective-c / oc 等）代码块补关键词高亮 | legacy | 无 UI |
-| `multimodal/` | `dsh-multimodal` | 给自定义模型逐个开关「是否支持图片输入」（写 llm-pi-ai 的 `input` 模态） | legacy | 设置 → 模型 |
-| `chat_autoscroll/` | `dsh-chat-autoscroll` | 对话页流式输出智能吸底：停在底部自动跟随、往上翻则暂停 | legacy | 无 UI |
+| `usage/` | `dsh-usage` | 采集模型返回的 usage，按「天 × 模型」统计总 token，堆叠柱状图看各模型用量与占比 | bundle·legacy | 左下角（设置按钮上方） |
+| `lan_access/` | `dsh-lan-access` | 带鉴权的反向代理 + 二维码接口，手机扫码在局域网里打开同一套界面（**默认关闭**） | bundle·legacy | 侧边栏 |
+| `review/` | `dsh-review` | 把 agent 每次 write / edit 的改动汇总成差异账本，逐块「保留 / 回退」，也能导入工作区 git 改动 | bundle·legacy | 侧边栏 |
+| `font/` | `dsh-font` | 全局界面字体 / 代码字体 / 字号缩放 / 文字色 / 背景色 | bundle·legacy | 设置 → 常规 |
+| `highlight/` | `dsh-highlight` | 给 shiki 未覆盖的语言（dart / objective-c / oc 等）代码块补关键词高亮 | bundle·legacy | 无 UI |
+| `multimodal/` | `dsh-multimodal` | 给自定义模型逐个开关「是否支持图片输入」（写 llm-pi-ai 的 `input` 模态） | bundle·legacy | 设置 → 模型 |
+| `chat_autoscroll/` | `dsh-chat-autoscroll` | 对话页流式输出智能吸底：停在底部自动跟随、往上翻则暂停 | bundle·legacy | 无 UI |
 | `context_1m/` | `dsh-context-1m` | 输入框模型选择器左边的「1M」勾选框：为**当前模型**写入 / 写回 `contextWindow` | bundle | 输入框 |
 | `thinking_strength/` | `dsh-thinking-strength` | 输入框模型选择器左边的「思考」勾选框：为**当前模型**补全 / 删除 `reasoningEfforts` 档位 | bundle | 输入框 |
 | `image_reader/` | `dsh-image-reader` | 给纯文本模型一双「借来的眼睛」：当前模型不支持图片输入时注入 `read_image_details` 工具，把「图片 + 问题」转发给指定的多模态模型，再把答案原样带回 | bundle | 设置 → 图像解读 |
 | `batch_install/` | `dsh-batch-install` | 插件安装体验补丁：**选文件夹**（走 dsh 自带的目录选择器，不用手输路径）+ **批量安装**（扫出文件夹里的插件，勾选后一次装完，逐条报成功 / 需重启 / 失败） | bundle | 设置 → 插件（「批量安装」标签 + 添加菜单） |
-| `file_explorer/` | `dsh-file-explorer` | Xcode 风格文件浏览器：侧栏底部文件夹图标 + 文件树 + 带行号的只读/可编辑预览（语法高亮、图片查看） | bundle | 左侧栏底部图标 |
 | `mobile_fit/` | `dsh-mobile-fit` | 手机竖屏适配：窄屏时侧边栏变抽屉、对话正文铺满屏幕，代码块横向滚动、弹窗不超屏 | bundle | 无 UI（窄屏自动生效） |
+
+「形态」列的含义：
+
+| 形态 | 含义 |
+| --- | --- |
+| `bundle` | 只有 `package.json`（`dsh.bundle.patch` + `exports["./client"]`），唯一安装方式是当 npm 依赖挂进 profile |
+| `bundle·legacy` | 同时带 `manifest.json`，两种装法都认：推荐走 bundle（同左），也可以按老办法整目录复制到 profile 的 `plugins/<id>/` |
 
 ## 两种插件形态
 
 仓库里同时存在两代插件写法，安装器会按目录内容自动识别，不需要你手动区分。
+**现在 12 个插件都能当 bundle 装**；其中 7 个还留着 `manifest.json`，是为了兼容老的
+「复制目录 + 改 cordis.patch.yml」装法。
 
 ### 1. `bundle` 形态（推荐，新）
 
@@ -39,7 +47,8 @@
   peer 兼容检查。
 - 浏览器半边不用写补丁：dsh 的 client-modules 从入口往上找最近的 `package.json`，
   读到 `dsh.client.platform === "web"` 就按 `exports["./client"]` 自动挂进启动图。
-- 采用：`context_1m/`、`thinking_strength/`、`image_reader/`、`batch_install/`、`file_explorer/`、`mobile_fit/`
+- 采用：`context_1m/`、`thinking_strength/`、`image_reader/`、`batch_install/`、`mobile_fit/`，
+  以及下面「legacy」里的 7 个（这些目录现在也按 bundle 装）
 
 ### 2. `legacy` 形态
 
@@ -49,13 +58,44 @@
 - 安装 = 整目录复制到 profile 的 `plugins/<id>/`，再往 profile 的 `cordis.patch.yml`
   追加一段带 `id` 的 `insert` 条目。
 - 采用：`usage/`、`lan_access/`、`review/`、`font/`、`highlight/`、`multimodal/`、`chat_autoscroll/`
+  （这几个目录里也都有 `package.json`，所以同样能当 bundle 装——现在实际都这么装）
 
 ## 安装
 
-### 整套安装（推荐）
+### 一条命令同步（推荐）
 
 ```bash
 git clone https://github.com/cl19940824/dsh-plugins.git
+cd dsh-plugins
+python3 tools/sync-plugins.py
+```
+
+[`tools/sync-plugins.py`](tools/sync-plugins.py)（只依赖 Python 3 标准库，不用装任何包）
+让 profile 和本仓库**完全一致**：先 `git pull --ff-only` 拉最新代码，再扫出仓库里所有带
+`dsh.bundle.patch` 的插件包，和 profile 的 `dependencies` 逐条比对——
+
+- 缺的 → 装上
+- 指向别处的 → 改指向
+- 软链断了的 → 重装
+- **仓库里已经删掉的 → 卸掉**（连 `bundles` 层里的条目一起清）
+
+最后把新装的插件追加进 `dsh.profile.bundles`。幂等，重复跑只说「没有要做的」。
+
+```bash
+python3 tools/sync-plugins.py                # 拉代码 + 完全同步到当前 profile
+python3 tools/sync-plugins.py -n             # 只看会做什么（dry-run）
+python3 tools/sync-plugins.py -p web         # 同步到别的 profile
+python3 tools/sync-plugins.py --keep         # 只装不卸
+python3 tools/sync-plugins.py --enable-all   # 已装但被你关掉的插件也重新启用
+```
+
+卸载只针对 **`link:` 指向本仓库**的依赖，第三方 npm 包和你手动 `link:` 到别处的目录一个都不碰。
+默认只启用**本次新装**的插件；已经装好却不在 `bundles` 层里的（通常是你在面板里手动关掉的）
+只提示、不动，避免脚本覆盖你的选择。退出码 `0` 同步成功、`1` 出错。
+
+### 走安装器脚本
+
+```bash
 python3 ~/.dsh/skills/dsh-plugin-install/scripts/install_plugin.py ./dsh-plugins
 ```
 
@@ -117,9 +157,9 @@ client-modules 轮询到并热替换，不用重启（保险起见再刷一次�
 
 1. 新建 `<插件名>/` 目录，按上表补齐文件。
 2. 在本 README 的「插件一览」表里加一行。
-3. 用安装器装一遍验证：`python3 ~/.dsh/skills/dsh-plugin-install/scripts/install_plugin.py ./<插件名>`
+3. 跑 `python3 tools/sync-plugins.py` 装一遍验证（它会自动扫到新目录）。
 
-安装脚本是按目录自动发现的（判据：`package.json` 的 `dsh.bundle.patch`，或 `manifest.json`），
+安装入口都是按目录自动发现的（判据：`package.json` 的 `dsh.bundle.patch`，或 `manifest.json`），
 不需要改动脚本本身。
 
 ## 版本要求
