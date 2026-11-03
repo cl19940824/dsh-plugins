@@ -14,6 +14,11 @@ open ios/DSHRemote/DSHRemote.xcodeproj
 - 第一次打开：打开电脑上的「局域网访问」面板，把地址（`http://192.168.x.x:3081`）和访问码
   填进 App，或者直接扫面板上的二维码——两样都会自动带进来。
 
+![App 图标](../../docs/dshremote-icon.png)
+
+深蓝渐变底、白色 DeepSeek 鲸鱼，右上角三道信号弧——鲸鱼是 DeepSeek 的本体，弧线表示
+「同一个 Wi-Fi 里的这台电脑」。图标是 1024×1024 的 `Assets.xcassets/AppIcon`。
+
 ## 局域网模式怎么工作
 
 电脑端的 `lan_access` 插件在 `3081` 端口上做鉴权代理，访问码既可以写在 URL 里
