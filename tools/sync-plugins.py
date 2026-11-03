@@ -16,6 +16,7 @@
       --enable-all         已装但不在 bundles 层的插件也一并启用
                            （默认只启用本次新装的，免得覆盖你在面板里手动关掉的）
   -n, --dry-run            只打印要做什么，不跑 pnpm、不写文件
+      --pnpm PATH          指定 pnpm 可执行文件（默认自动找 PATH / dsh 自带）
   -h, --help               看帮助
 
 退出码：0 = 已同步（或本来就一致）；1 = 出错（pnpm 失败 / manifest 异常）
@@ -108,6 +109,7 @@ def parse_args(argv):
         "keep": False,
         "enable_all": False,
         "dry_run": False,
+        "pnpm": None,
         "help": False,
     }
     index = 0
@@ -131,6 +133,11 @@ def parse_args(argv):
             options["keep"] = False
         elif arg == "--enable-all":
             options["enable_all"] = True
+        elif arg == "--pnpm":
+            index += 1
+            if index >= len(argv):
+                raise Failure("--pnpm 需要跟一个路径")
+            options["pnpm"] = argv[index]
         elif arg in ("-n", "--dry-run"):
             options["dry_run"] = True
         elif arg in ("-h", "--help"):
@@ -262,9 +269,62 @@ def under(path: Path, root: Path) -> bool:
 
 
 # ---------------------------------------------------------------- 外部命令
-def pnpm_command() -> str:
+def _pnpm_executable() -> str:
     """pnpm 的可执行名；Windows 上是 pnpm.cmd。"""
     return "pnpm.cmd" if os.name == "nt" else "pnpm"
+
+
+def _pnpm_on_system():
+    """PATH 或常见的 pnpm 安装位置。找到返回 [路径]，否则 None。"""
+    exe = _pnpm_executable()
+    found = shutil.which(exe)
+    if found:
+        return [found]
+    homes = [
+        os.environ.get("PNPM_HOME"),
+        str(Path.home() / "Library" / "pnpm"),          # macOS pnpm 默认
+        str(Path.home() / ".local" / "share" / "pnpm"),  # Linux
+        str(Path.home() / "AppData" / "Local" / "pnpm"), # Windows
+    ]
+    for home in homes:
+        if not home:
+            continue
+        candidate = Path(home) / exe
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return [str(candidate)]
+    return None
+
+
+def _pnpm_bundled():
+    """dsh 桌面版自带的 pnpm（用同一个运行时里的 node 跑 pnpm.cjs）。
+
+    没装过 pnpm、PATH 里也没有的时候，这是最省事的一份——版本还和面板里用的一致。
+    """
+    roots = []
+    env = os.environ.get("DSH_APP")
+    if env:
+        roots.append(Path(env).expanduser())
+    roots.append(Path("/Applications/DeepSeek Harness.app"))
+    roots.append(Path.home() / "Applications" / "DeepSeek Harness.app")
+    for root in roots:
+        runtime = root / "Contents" / "Resources" / "runtime"
+        if not runtime.is_dir():
+            continue
+        for script in sorted(runtime.glob("*/dependencies/pnpm/bin/pnpm.cjs")):
+            node = script.parents[2] / "node" / "bin" / "node"
+            if node.is_file():
+                return [str(node), str(script)]
+    return None
+
+
+def find_pnpm(explicit=None):
+    """返回调用 pnpm 的命令前缀（list）；找不到返回 None。"""
+    if explicit:
+        path = Path(explicit).expanduser()
+        if not path.is_file():
+            raise Failure(f"--pnpm 指向的文件不存在：{path}")
+        return [str(path)]
+    return _pnpm_on_system() or _pnpm_bundled()
 
 
 def run(args, cwd: Path):
@@ -329,9 +389,15 @@ def main(argv) -> int:
         print("  这个 profile 还没初始化？先在 dsh 里启动一次，或用 --profile / --profile-dir 指对地方。", file=sys.stderr)
         return 1
 
-    if not shutil.which(pnpm_command()):
-        print(red(f"✗ PATH 里没有 {pnpm_command()}"), file=sys.stderr)
+    pnpm = find_pnpm(options["pnpm"])
+    if not pnpm:
+        print(red("✗ 找不到 pnpm"), file=sys.stderr)
+        print("  找过：PATH、PNPM_HOME、~/Library/pnpm，以及 dsh 桌面版自带的运行时。", file=sys.stderr)
+        print("  装一个（npm i -g pnpm），或用 --pnpm /path/to/pnpm 指过去。", file=sys.stderr)
         return 1
+    options["pnpm_cmd"] = pnpm
+    if len(pnpm) > 1:
+        print(dim(f"· 用 dsh 自带的 pnpm：{pnpm[-1]}"))
 
     if options["pull"] and not options["dry_run"]:
         git_pull(repo_root)
@@ -396,7 +462,7 @@ def main(argv) -> int:
     if to_install:
         specs = [f"link:{plugin['dir']}" for plugin in to_install]
         print(bold(f"→ pnpm add {len(specs)} 个 link 依赖"))
-        code = run([pnpm_command(), "add", *specs], profile_dir)
+        code = run([*options["pnpm_cmd"], "add", *specs], profile_dir)
         if code != 0:
             print(red(f"✗ pnpm add 失败（退出码 {code}），bundles 层没有动"), file=sys.stderr)
             return 1
@@ -405,7 +471,7 @@ def main(argv) -> int:
     pruned = [] if options["keep"] else stale
     if pruned:
         print(bold(f"→ pnpm remove {len(pruned)} 个已失效插件"))
-        code = run([pnpm_command(), "remove", *pruned], profile_dir)
+        code = run([*options["pnpm_cmd"], "remove", *pruned], profile_dir)
         if code != 0:
             print(red(f"✗ pnpm remove 失败（退出码 {code}）"), file=sys.stderr)
             return 1
