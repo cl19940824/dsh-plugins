@@ -1,0 +1,33 @@
+{
+  "name": "dsh-file-explorer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Xcode 风格的左侧文件浏览器：侧栏多一个「文件」入口，打开后是工作区文件树 + 带行号和语法高亮的可编辑预览；文件夹只展开收起，文件可改可存",
+  "exports": {
+    ".": "./lib/explorer.mjs",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib/explorer.mjs",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.0-rc.2 <0.3.0"
+  }
+}
