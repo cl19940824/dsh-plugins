@@ -327,6 +327,7 @@ export function createProxy(options) {
 
   /** 发一个拒绝页。 */
   function deny(res, verdict) {
+    if (res.destroyed || res.writableEnded) return
     const body = errorPage(verdict.title, verdict.detail)
     res.writeHead(verdict.status, {
       'content-type': 'text/html; charset=utf-8',
@@ -341,6 +342,31 @@ export function createProxy(options) {
   /* ------------------------------------------------------------------------ */
 
   /**
+   * 把上游响应转给浏览器，并容忍浏览器中途关掉页面。
+   *
+   * 关标签页时 `res` 已经是 destroyed 状态，此时直接 `pipeline()` 会**同步抛出**
+   * `ERR_STREAM_UNABLE_TO_PIPE`；因为这段代码跑在 ClientRequest 的 'response'
+   * 回调里，异常没人接，会冒泡成进程级 uncaught exception，把整个 host 带下去。
+   */
+  function pipeResponse(response, res) {
+    if (res.destroyed || res.writableEnded) {
+      response.destroy()
+      return
+    }
+    const abortUpstream = () => {
+      if (!response.destroyed) response.destroy()
+    }
+    res.once('close', abortUpstream)
+    response.once('close', () => res.off('close', abortUpstream))
+    try {
+      pipeline(response, res, () => {})
+    } catch {
+      abortUpstream()
+      if (!res.destroyed) res.destroy()
+    }
+  }
+
+  /**
    * 能不能安全重试。
    *
    * 只在 GET/HEAD 上重试：重试要重新 `req.pipe(upstream)`，而请求流第一次就被消费掉了，
@@ -353,12 +379,17 @@ export function createProxy(options) {
 
   /** 普通 HTTP 请求转发。 */
   async function handleRequest(req, res) {
+    if (res.destroyed) {
+      res.destroy()
+      return
+    }
     const verdict = gate(req)
     if (verdict.action === 'deny') {
       deny(res, verdict)
       return
     }
     if (verdict.action === 'redirect') {
+      if (res.destroyed) return
       res.writeHead(303, {
         location: verdict.location,
         'cache-control': 'no-store',
@@ -390,23 +421,37 @@ export function createProxy(options) {
           headers: rewriteHeaders(req.headers, upstreamCookie, false)
         },
         (response) => {
-          const status = response.statusCode ?? 502
-          // cookie 过期/进程换了 token 时上游会 401/403：重换一次再试
-          if ((status === 401 || status === 403) && !retried && isRetryable(req)) {
-            response.resume()
-            ensureCookie(true).then(
-              (fresh) => forward(fresh, true),
-              (error) => {
-                log(`重新换上游 cookie 失败：${String(error?.message ?? error)}`)
-                if (!res.headersSent) {
-                  deny(res, { status: 502, title: '连不上本机的 dsh 服务', detail: '请稍后重试，或重启服务。' })
+          try {
+            if (res.destroyed) {
+              response.destroy()
+              return
+            }
+            const status = response.statusCode ?? 502
+            // cookie 过期/进程换了 token 时上游会 401/403：重换一次再试
+            if ((status === 401 || status === 403) && !retried && isRetryable(req)) {
+              response.resume()
+              ensureCookie(true).then(
+                (fresh) => forward(fresh, true),
+                (error) => {
+                  log(`重新换上游 cookie 失败：${String(error?.message ?? error)}`)
+                  if (!res.headersSent) {
+                    deny(res, { status: 502, title: '连不上本机的 dsh 服务', detail: '请稍后重试，或重启服务。' })
+                  }
                 }
-              }
-            )
-            return
+              )
+              return
+            }
+            res.writeHead(status, responseHeaders(response.headers))
+            pipeResponse(response, res)
+          } catch (error) {
+            log(`转发响应失败：${String(error?.message ?? error)}`)
+            response.destroy()
+            if (!res.headersSent) {
+              deny(res, { status: 502, title: '内部错误', detail: '代理处理这个请求时出错了。' })
+            } else if (!res.destroyed) {
+              res.destroy()
+            }
           }
-          res.writeHead(status, responseHeaders(response.headers))
-          pipeline(response, res, () => {})
         }
       )
       upstream.on('error', (error) => {
@@ -417,7 +462,15 @@ export function createProxy(options) {
           res.destroy()
         }
       })
-      req.pipe(upstream)
+      if (req.destroyed) {
+        upstream.destroy()
+        return
+      }
+      try {
+        req.pipe(upstream)
+      } catch {
+        upstream.destroy()
+      }
     }
 
     forward(cookie, false)
@@ -436,6 +489,7 @@ export function createProxy(options) {
     socket.on('close', () => upgrades.delete(socket))
 
     const rejectUpgrade = (status, title, detail) => {
+      if (socket.destroyed) return
       const body = errorPage(title, detail)
       socket.end(
         `HTTP/1.1 ${String(status)} ${STATUS_TEXT[status] ?? 'Error'}\r\n` +
@@ -472,11 +526,15 @@ export function createProxy(options) {
       lines.push('', '')
       upstream.write(lines.join('\r\n'))
       if (head !== undefined && head.length > 0) upstream.write(head)
-      socket.pipe(upstream)
-      upstream.pipe(socket)
+      try {
+        socket.pipe(upstream)
+        upstream.pipe(socket)
+      } catch {
+        teardown()
+      }
     })
 
-    const teardown = () => {
+    function teardown() {
       upstream.destroy()
       socket.destroy()
     }

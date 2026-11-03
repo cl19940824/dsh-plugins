@@ -171,3 +171,32 @@ lib/proxy.mjs        反向代理本体：鉴权、cookie 兑换、头改写、H
 lib/qr.mjs           纯 JS 二维码编码器（byte 模式 / EC M / v1-10 / 自动掩码）→ SVG
 lib/client.js        浏览器半边：侧边栏入口（独占一行）+ 二维码/开关面板
 ```
+
+## 关掉浏览器页面不会带走宿主
+
+浏览器关标签页时，请求的 `ServerResponse` 已经是 destroyed 状态；如果上游这时才回响应，
+旧代码会在 `ClientRequest` 的 `'response'` 回调里直接 `pipeline(response, res)`。
+Node 24 对「往已关闭/已销毁的流里 pipe」是**同步抛** `ERR_STREAM_UNABLE_TO_PIPE`，
+而这个异常跑在事件回调里、没有调用方接得住，会被当成 uncaught exception 让 host 退出
+（桌面端表现为「host 已退出」+ 崩溃日志）。
+
+现在的做法（`lib/proxy.mjs` 的 `pipeResponse`）：
+
+- 回调进来先看 `res.destroyed || res.writableEnded`，是就直接把上游响应销毁；
+- 把 `pipeline` 包在 `try/catch` 里兜底；
+- `res` 一 close 就销毁上游响应，别让上游连接挂着；
+- `req.pipe(upstream)`、WebSocket 的双向 pipe 同样加了保护和 `try/catch`。
+
+回归测试：
+
+```bash
+node --test test/abort.test.mjs
+```
+
+三种断开时机（响应前 / 刚拿到响应头 / 传大响应中途）各跑 5 次，并验证断开后代理仍然正常服务。
+用 Electron 自带的 Node 24 跑能直接复现旧代码的崩溃：
+
+```bash
+ELECTRON_RUN_AS_NODE=1 "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness" \
+  --test test/abort.test.mjs
+```
