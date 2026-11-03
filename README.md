@@ -22,6 +22,8 @@
 | `thinking_strength/` | `dsh-thinking-strength` | 输入框模型选择器左边的「思考」勾选框：为**当前模型**补全 / 删除 `reasoningEfforts` 档位 | bundle | 输入框 |
 | `image_reader/` | `dsh-image-reader` | 给纯文本模型一双「借来的眼睛」：当前模型不支持图片输入时注入 `read_image_details` 工具，把「图片 + 问题」转发给指定的多模态模型，再把答案原样带回 | bundle | 设置 → 图像解读 |
 | `batch_install/` | `dsh-batch-install` | 插件安装体验补丁：**选文件夹**（走 dsh 自带的目录选择器，不用手输路径）+ **批量安装**（扫出文件夹里的插件，勾选后一次装完，逐条报成功 / 需重启 / 失败） | bundle | 设置 → 插件（「批量安装」标签 + 添加菜单） |
+| `file_explorer/` | `dsh-file-explorer` | Xcode 风格文件浏览器：侧栏底部文件夹图标 + 文件树 + 带行号的只读/可编辑预览（语法高亮、图片查看） | bundle | 左侧栏底部图标 |
+| `mobile_fit/` | `dsh-mobile-fit` | 手机竖屏适配：窄屏时侧边栏变抽屉、对话正文铺满屏幕，代码块横向滚动、弹窗不超屏 | bundle | 无 UI（窄屏自动生效） |
 
 ## 两种插件形态
 
@@ -37,7 +39,7 @@
   peer 兼容检查。
 - 浏览器半边不用写补丁：dsh 的 client-modules 从入口往上找最近的 `package.json`，
   读到 `dsh.client.platform === "web"` 就按 `exports["./client"]` 自动挂进启动图。
-- 采用：`context_1m/`、`thinking_strength/`、`image_reader/`、`batch_install/`
+- 采用：`context_1m/`、`thinking_strength/`、`image_reader/`、`batch_install/`、`file_explorer/`、`mobile_fit/`
 
 ### 2. `legacy` 形态
 

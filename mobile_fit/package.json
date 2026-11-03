@@ -1,0 +1,27 @@
+{
+  "name": "dsh-mobile-fit",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./mobile-fit.mjs",
+  "description": "DSH 手机适配：窄屏时侧边栏变抽屉，对话正文占满屏幕",
+  "files": [
+    "mobile-fit.mjs",
+    "cordis.patch.yml",
+    "lib",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./mobile-fit.mjs",
+    "./package.json": "./package.json",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}
