@@ -8,6 +8,11 @@
 - 左栏：文件夹点一下只**展开 / 收起**（不改名、不删除），文件点一下打开。
 - 右栏：带**行号**和**语法高亮**的编辑器，主流代码文件都能预览；图片直接显示。
 - 文件可以**直接改**，`⌘S` / `Ctrl+S` 保存，保存时带版本校验（磁盘被别人改过会提示，不会静默覆盖）。
+- 字体跟随 dsh 的字体设置（`--ds-font-family-code` / `--dsw-font-family`），可以配 `dsh-font` 换成 SF Mono。
+- 高亮覆盖常见语言：js/ts/jsx/tsx、python、swift、objc、c/cpp、java、kotlin、dart、go、rust、
+  ruby（含 Podfile / Fastfile / Gemfile）、cs、lua、scala、r、groovy、sh、yaml、json、toml、
+  css、html/xml、sql、markdown（标题/列表/引用/围栏代码/行内代码/链接）。扩展名缺失时按内容猜（shebang、
+  `@interface`、`Pod::Spec`、`package … func` 等）。
 - 配色全部走主题变量（`--dsw-alias-*` / `--shiki-token-*`），跟聊天里的代码块、以及 Xcode 主题是同一套颜色。
 
 ## 入口
@@ -27,7 +32,7 @@
 | 点文件 | 打开预览；文本进编辑器，图片进图片视图 |
 | 输入 | 直接编辑（Tab 插入两个空格） |
 | `⌘S` / `Ctrl+S` | 保存当前文件 |
-| 顶部筛选框 | 按名字过滤当前已展开的层级 |
+| 顶部筛选框 | 按名字**递归**搜索整个工作区（结果带所在目录，点一下直接打开） |
 | 拖动树与编辑器之间的分隔条 | 调整树宽度 |
 | 顶部刷新 | 重新读取所有已展开的目录 |
 | 多工作区 | 顶部标题旁的下拉框切换 |
@@ -46,7 +51,7 @@
 file_explorer/
   package.json        bundle 形态：dsh.bundle.patch + dsh.client.platform=web
   cordis.patch.yml    把宿主半边 insert 进 profile
-  lib/explorer.mjs    宿主半边：POST /api/file-explorer（roots / list / read / image / write）
+  lib/explorer.mjs    宿主半边：POST /api/file-explorer（roots / list / read / image / write / search）
   lib/client.js       浏览器半边：槽位注册 + 文件树 + 编辑器 + 轻量分词器
   icon.svg
 ```
@@ -65,6 +70,7 @@ file_explorer/
 | `read` | `root, path` | `{ kind: 'text' \| 'binary' \| 'too-large', text?, version?, size }` |
 | `image` | `root, path` | `{ mime, base64, size }` |
 | `write` | `root, path, text, version?` | `{ version, bytes }`；版本过期返回 `stale` |
+| `search` | `root, query, limit?` | `{ entries: [{ path, rel, name, type }], truncated }`（递归，深度 ≤ 8，最多 4000 条） |
 
 ## 安装
 
@@ -76,6 +82,6 @@ dsh plugin add /Users/chenglang/Code/github/dsh-plugins/file_explorer
 
 ## 已知限制
 
-- 只读预览不跟随磁盘变化：外部改动要手动「刷新」或重新打开文件（自动监听是下一步）。
+- 预览不跟随磁盘变化：外部改动要手动「刷新」或重新打开文件（自动监听是下一步）。
 - 高亮是轻量词法分词，不做语义分析；模板字符串、正则字面量内部可能按普通文本处理。
 - 超大文件（> 2 MB）不打开，避免把编辑器卡死。

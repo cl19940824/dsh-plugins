@@ -239,6 +239,55 @@ function createHandler(fs, registry, workingDirectory) {
     }
   }
 
+  /**
+   * 递归按名字搜索：筛选框不能只看「已展开」的分支，否则藏在折叠目录里的
+   * Podfile 永远搜不到。走的是 listDir 拿到的真实条目，路径只做拼接，不接受
+   * 客户端给的任意相对路径。
+   */
+  async function search(body) {
+    const root = String(body.root || '')
+    const query = String(body.query || '').trim().toLowerCase()
+    const limit = Math.min(Math.max(Number(body.limit) || 200, 1), 500)
+    if (!query) return json({ ok: true, entries: [] })
+    await targetIn(fs, root, root)
+    const hits = []
+    let visited = 0
+    let truncated = false
+    const walk = async (dir, rel, depth) => {
+      if (hits.length >= limit || depth > 8) {
+        truncated = truncated || hits.length >= limit
+        return
+      }
+      let entries
+      try {
+        entries = await fs.listDir(await fs.resolve(dir))
+      } catch {
+        return
+      }
+      for (const entry of entries) {
+        if (hits.length >= limit) {
+          truncated = true
+          return
+        }
+        if (SKIP_NAMES.has(entry.name)) continue
+        if (entry.type !== 'file' && entry.type !== 'directory') continue
+        visited += 1
+        if (visited > MAX_ENTRIES) {
+          truncated = true
+          return
+        }
+        const path = `${dir}/${entry.name}`
+        const relPath = rel ? `${rel}/${entry.name}` : entry.name
+        if (entry.name.toLowerCase().includes(query)) {
+          hits.push({ path, rel: relPath, name: entry.name, type: entry.type })
+        }
+        if (entry.type === 'directory') await walk(path, relPath, depth + 1)
+      }
+    }
+    await walk(root, '', 0)
+    return json({ ok: true, entries: hits, truncated })
+  }
+
   return async function handle(request) {
     let body = null
     try {
@@ -259,6 +308,8 @@ function createHandler(fs, registry, workingDirectory) {
           return await image(body)
         case 'write':
           return await write(body)
+        case 'search':
+          return await search(body)
         default:
           return json({ ok: false, error: `未知 action：${body.action}` }, 400)
       }

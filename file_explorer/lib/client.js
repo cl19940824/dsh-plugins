@@ -48,6 +48,8 @@ window.__ModuleLoader__.load({
       readOnly: '只读',
       line: '行 {n}',
       filterEmpty: '没有匹配的文件',
+      searchFailed: '搜索失败',
+      searching: '搜索中…',
       stale: '文件已在磁盘上被修改',
       openFailed: '打不开这个文件',
       listFailed: '读不出这个目录',
@@ -79,6 +81,8 @@ window.__ModuleLoader__.load({
       readOnly: 'read only',
       line: 'Line {n}',
       filterEmpty: 'No matching files',
+      searchFailed: 'Search failed',
+      searching: 'Searching…',
       stale: 'The file changed on disk',
       openFailed: 'Could not open this file',
       listFailed: 'Could not list this folder',
@@ -122,6 +126,11 @@ window.__ModuleLoader__.load({
       php: ['abstract and array as break callable case catch class clone const continue declare default do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile extends final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new or print private protected public readonly require require_once return static switch throw trait try unset use var while xor yield true false null', 'int float string bool array object iterable void mixed never', '//', '"', false],
       xml: ['', '', '', '"', false],
       proto: ['syntax package import message enum service rpc returns repeated optional required string int32 int64 uint32 uint64 bool bytes double float map oneof reserved', 'string int32 int64 bool bytes double float', '//', '"', false],
+      cs: ['abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while var record init', 'String Int32 Int64 Double Boolean Object List Dictionary Task Action Func', '//', '"', false],
+      lua: ['and break do else elseif end false for function goto if in local nil not or repeat return then true until while', 'string number boolean table', '--', "'\"", false],
+      scala: ['abstract case catch class def do else extends false final finally for forSome if implicit import lazy match new null object override package private protected return sealed super this throw trait try true type val var while with yield', 'String Int Long Double Boolean Any List Seq Map Set Option Either Future', '//', '"', false],
+      r: ['break else for function if in next repeat return while TRUE FALSE NULL Inf NaN NA', 'character numeric integer logical list data.frame matrix vector factor', '#', "'\"", false],
+      groovy: ['abstract as assert break case catch class const continue def default do else enum extends final finally for goto if implements import in instanceof interface native new package private protected public return static strictfp super switch synchronized this throw throws trait transient try void volatile while true false null it', 'String Integer Long Double Float Boolean List Map Set Closure', '//', '"', false],
     }
 
     const EXT_LANG = {
@@ -140,7 +149,55 @@ window.__ModuleLoader__.load({
       html: 'html', htm: 'html', vue: 'html', svelte: 'html', xml: 'xml', svg: 'xml', plist: 'xml',
       md: 'md', markdown: 'md', mdx: 'md',
       sql: 'sql', toml: 'toml', ini: 'toml', conf: 'toml',
-      rb: 'rb', php: 'php', proto: 'proto',
+      rb: 'rb', rake: 'rb', gemspec: 'rb', podspec: 'rb', ru: 'rb',
+      php: 'php', proto: 'proto',
+      cs: 'cs', lua: 'lua', scala: 'scala', sc: 'scala', r: 'r',
+      groovy: 'groovy', gradle: 'groovy', gvy: 'groovy',
+      mk: 'sh', make: 'sh', cmake: 'sh', dockerfile: 'sh',
+      xcconfig: 'toml', entitlements: 'xml', storyboard: 'xml', xib: 'xml',
+      lock: 'yaml', mdx: 'md',
+    }
+
+    /** 没有扩展名、或扩展名不可靠的文件，按文件名直接判定语言。 */
+    const NAME_LANG = {
+      podfile: 'rb', 'podfile.lock': 'yaml', gemfile: 'rb', 'gemfile.lock': 'rb',
+      rakefile: 'rb', fastfile: 'rb', appfile: 'rb', matchfile: 'rb', dangerfile: 'rb',
+      brewfile: 'rb', vagrantfile: 'rb', guardfile: 'rb', capfile: 'rb', thorfile: 'rb',
+      podspec: 'rb',
+      dockerfile: 'sh', makefile: 'sh', 'cmakelists.txt': 'sh', 'gnumakefile': 'sh',
+      '.gitignore': 'sh', '.gitattributes': 'sh', '.npmignore': 'sh', '.dockerignore': 'sh',
+      '.env': 'toml', '.editorconfig': 'toml', '.babelrc': 'json', '.eslintrc': 'json',
+      'package-lock.json': 'json', 'tsconfig.json': 'json',
+      'cartfile': 'rb', 'cartfile.private': 'rb',
+    }
+
+    /** 扩展名缺失或陌生时，用内容猜语言。返回 '' 表示没把握。 */
+    function sniffLang(text) {
+      const head = text.slice(0, 4000)
+      const shebang = /^\s*#!\s*\S*?(python[\d.]*|node|bun|bash|zsh|sh|ruby|perl|php)\b/.exec(head)
+      if (shebang) {
+        const name = shebang[1]
+        if (name.startsWith('python')) return 'py'
+        if (name === 'node' || name === 'bun') return 'js'
+        if (name === 'ruby') return 'rb'
+        if (name === 'php') return 'php'
+        if (name === 'perl') return 'php'
+        return 'sh'
+      }
+      if (/^\s*<\?xml\b/i.test(head)) return 'xml'
+      if (/^\s*<!doctype html/i.test(head) || /<html[\s>]/i.test(head)) return 'html'
+      if (/Pod::Spec|\.podspec|platform\s+:(ios|osx|tvos|watchos)|use_frameworks!|source\s+'https?:\/\/github\.com\/CocoaPods/i.test(head)) return 'rb'
+      if (/@interface\s+\w+|#import\s*[<"]|@implementation\s+\w+|\bNS[A-Z]\w*\s*\*/.test(head)) return 'objc'
+      if (/\bimport\s+(UIKit|Foundation|SwiftUI|AppKit)\b|\bfunc\s+\w+\s*\(|\blet\s+\w+\s*:/.test(head)) return 'swift'
+      if (/^\s*package\s+\w+\s*$/m.test(head) && /\bfunc\s+\w+\s*\(/.test(head)) return 'go'
+      if (/\bfn\s+main\s*\(|\buse\s+std::/.test(head)) return 'rust'
+      if (/^\s*def\s+\w+\s*\(.*\)\s*:\s*$/m.test(head) || /^\s*(from\s+\S+\s+)?import\s+[\w.]+\s*$/m.test(head)) return 'py'
+      if (/^\s*(---\s*$)[\s\S]*^[\w.-]+\s*:/m.test(head)) return 'yaml'
+      if (/^\s*[{[]\s*"[^"]+"\s*:/.test(head)) return 'json'
+      if (/\b(SELECT|INSERT\s+INTO|CREATE\s+TABLE|UPDATE\s+\w+\s+SET)\b/i.test(head)) return 'sql'
+      if (/<([a-z][\w-]*)(\s+[\w:-]+=("[^"]*"|'[^']*'))*\s*\/?>/i.test(head)) return 'html'
+      if (/^\s*#{1,6}\s+\S/m.test(head) && /\n\s*[-*]\s+\S/.test(head)) return 'md'
+      return ''
     }
 
     const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif'])
@@ -180,7 +237,10 @@ window.__ModuleLoader__.load({
     const dirName = (path) => path.slice(0, path.lastIndexOf('/'))
     const joinPath = (dir, name) => (dir.endsWith('/') ? `${dir}${name}` : `${dir}/${name}`)
 
-    const langOf = (path) => EXT_LANG[extOf(path)] || 'txt'
+    const langOf = (path, text) => {
+      const name = baseName(path).toLowerCase()
+      return NAME_LANG[name] || EXT_LANG[extOf(path)] || (text ? sniffLang(text) : '') || 'txt'
+    }
 
     const formatBytes = (bytes) => {
       if (typeof bytes !== 'number' || !Number.isFinite(bytes)) return ''
@@ -207,9 +267,103 @@ window.__ModuleLoader__.load({
      * @param lang - 语言 id。
      * @returns 转义过、带 span 的 HTML 字符串。
      */
+    /** 行内 markdown：行内代码 / 粗体 / 斜体 / 链接。 */
+    function inlineMd(line) {
+      const out = []
+      let acc = ''
+      let i = 0
+      const flush = () => {
+        if (acc) {
+          out.push(escapeHtml(acc))
+          acc = ''
+        }
+      }
+      while (i < line.length) {
+        const rest = line.slice(i)
+        let m
+        if (rest[0] === '`' && (m = /^`+([^`]+)`+/.exec(rest))) {
+          flush()
+          out.push(`<span class="fx-md-code">${escapeHtml(m[1])}</span>`)
+          i += m[0].length
+          continue
+        }
+        if ((m = /^\*\*([^*]+)\*\*/.exec(rest)) || (m = /^__([^_]+)__/.exec(rest))) {
+          flush()
+          out.push(`<span class="fx-md-strong">${escapeHtml(m[1])}</span>`)
+          i += m[0].length
+          continue
+        }
+        if ((m = /^\*([^*\s][^*]*)\*/.exec(rest)) || (m = /^_([^_\s][^_]*)_/.exec(rest))) {
+          flush()
+          out.push(`<span class="fx-md-em">${escapeHtml(m[1])}</span>`)
+          i += m[0].length
+          continue
+        }
+        if ((m = /^!?\[([^\]]*)\]\(([^)]*)\)/.exec(rest))) {
+          flush()
+          out.push(`<span class="fx-md-link">${escapeHtml(m[1] || m[2])}</span>`)
+          i += m[0].length
+          continue
+        }
+        if ((m = /^<(https?:\/\/[^>]+)>/.exec(rest))) {
+          flush()
+          out.push(`<span class="fx-md-link">${escapeHtml(m[1])}</span>`)
+          i += m[0].length
+          continue
+        }
+        acc += line[i]
+        i += 1
+      }
+      flush()
+      return out.join('')
+    }
+
+    /** markdown：按行处理围栏代码块、标题、引用、列表、分割线，其余走行内规则。 */
+    function highlightMarkdown(text) {
+      const lines = text.split('\n')
+      const out = []
+      let fence = null
+      for (const line of lines) {
+        const open = /^\s{0,3}(`{3,}|~{3,})/.exec(line)
+        if (fence) {
+          if (open && line.trim().startsWith(fence.mark)) {
+            fence = null
+            out.push(`<span class="fx-md-code">${escapeHtml(line)}</span>`)
+          } else if (fence.lang && LANG[fence.lang]) {
+            out.push(highlight(line, fence.lang))
+          } else {
+            out.push(`<span class="fx-md-code">${escapeHtml(line)}</span>`)
+          }
+          continue
+        }
+        if (open) {
+          const info = line.trim().slice(open[1].length).trim().split(/\s+/)[0]
+          const alias = info ? EXT_LANG[info.toLowerCase()] || (LANG[info.toLowerCase()] ? info.toLowerCase() : '') : ''
+          fence = { mark: open[1], lang: alias }
+          out.push(`<span class="fx-md-code">${escapeHtml(line)}</span>`)
+          continue
+        }
+        if (/^\s{0,3}#{1,6}\s/.test(line)) {
+          out.push(`<span class="fx-md-h">${inlineMd(line)}</span>`)
+        } else if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) {
+          out.push(`<span class="fx-md-hr">${escapeHtml(line)}</span>`)
+        } else if (/^\s{0,3}>/.test(line)) {
+          out.push(`<span class="fx-md-quote">${inlineMd(line)}</span>`)
+        } else if (/^\s*([-*+]|\d+[.)])\s/.test(line)) {
+          const marker = /^\s*([-*+]|\d+[.)])\s/.exec(line)
+          const head = line.slice(0, line.search(/\S/) + marker[1].length)
+          out.push(`<span class="fx-md-list">${escapeHtml(head)}</span>${inlineMd(line.slice(head.length))}`)
+        } else {
+          out.push(inlineMd(line))
+        }
+      }
+      return out.join('\n')
+    }
+
     function highlight(text, lang) {
       const cfg = LANG[lang]
-      if (!cfg || lang === 'txt' || lang === 'md') return escapeHtml(text)
+      if (lang === 'md') return highlightMarkdown(text)
+      if (!cfg || lang === 'txt') return escapeHtml(text)
       const out = []
       let i = 0
       let plain = ''
@@ -314,10 +468,10 @@ window.__ModuleLoader__.load({
     /* ------------------------------------------------------------------ */
 
     const CSS = [
-      '.fx-root{display:flex;flex-direction:column;height:100%;min-height:420px;box-sizing:border-box;color:var(--dsw-alias-label-primary,#e6e6ea);background:var(--dsw-alias-bg-base,#1f1f24)}',
+      '.fx-root{display:flex;flex-direction:column;height:100%;min-height:420px;box-sizing:border-box;color:var(--dsw-alias-label-primary,#e6e6ea);background:var(--dsw-alias-bg-base,#1f1f24);font-family:var(--dsw-font-family,ui-sans-serif,system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif)}',
       '.fx-head{display:flex;align-items:center;gap:10px;flex:none;padding:10px 16px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,.08))}',
       '.fx-title{display:flex;align-items:baseline;gap:8px;font-size:14px;font-weight:600}',
-      '.fx-rootPath{font-size:11px;font-weight:400;color:var(--dsw-alias-label-secondary,#8b8b95);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;max-width:52vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.fx-rootPath{font-size:11px;font-weight:400;color:var(--dsw-alias-label-secondary,#8b8b95);font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);max-width:52vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.fx-headActions{margin-left:auto;display:flex;align-items:center;gap:8px}',
       '.fx-btn{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,.12));background:transparent;color:inherit;font:inherit;font-size:11.5px;cursor:pointer}',
       '.fx-btn:hover{background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.06))}',
@@ -335,6 +489,7 @@ window.__ModuleLoader__.load({
       '.fx-row:hover{background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.05))}',
       '.fx-row.sel{background:var(--dsw-alias-bg-selection,rgba(10,132,255,.22))}',
       '.fx-row .fx-name{overflow:hidden;text-overflow:ellipsis}',
+      '.fx-rowPath{margin-left:auto;padding-left:10px;font-size:10.5px;color:var(--dsw-alias-label-tertiary,#5a5a63);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl}',
       '.fx-row.dir .fx-name{color:var(--dsw-alias-label-primary,#e6e6ea)}',
       '.fx-chev{display:inline-flex;align-items:center;justify-content:center;width:10px;flex:none;opacity:.75;transform:rotate(0deg);transition:transform .12s ease}',
       '.fx-chev.open{transform:rotate(90deg)}',
@@ -349,9 +504,9 @@ window.__ModuleLoader__.load({
       '.fx-fileActions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}',
       '.fx-editorWrap{flex:1;min-height:0;display:flex;position:relative;overflow:hidden}',
       '.fx-gutter{flex:none;width:52px;overflow:hidden;padding:10px 0;box-sizing:border-box;border-right:1px solid var(--dsw-alias-border-l1,rgba(255,255,255,.05));background:var(--dsw-alias-bg-base,#1f1f24)}',
-      '.fx-gutterInner{white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:20px;text-align:right;color:var(--dsw-alias-label-tertiary,#5a5a63);padding-right:10px;will-change:transform}',
+      '.fx-gutterInner{white-space:pre;font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12.5px;line-height:20px;text-align:right;color:var(--dsw-alias-label-tertiary,#5a5a63);padding-right:10px;will-change:transform}',
       '.fx-code{position:relative;flex:1;min-width:0;overflow:hidden}',
-      '.fx-hl,.fx-input{margin:0;padding:10px 16px 10px 12px;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:20px;letter-spacing:0;tab-size:2;white-space:pre;border:0;outline:none}',
+      '.fx-hl,.fx-input{margin:0;padding:10px 16px 10px 12px;box-sizing:border-box;font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:12.5px;line-height:20px;letter-spacing:0;tab-size:2;white-space:pre;border:0;outline:none}',
       '.fx-hl{position:absolute;inset:0;overflow:hidden;pointer-events:none;color:var(--dsw-alias-label-primary,#dfe0e2);word-wrap:normal}',
       '.fx-input{position:absolute;inset:0;width:100%;height:100%;overflow:auto;resize:none;background:transparent;color:transparent;caret-color:var(--dsw-alias-label-primary,#e6e6ea);-webkit-text-fill-color:transparent}',
       '.fx-input::selection{background:rgba(10,132,255,.28);-webkit-text-fill-color:transparent}',
@@ -366,6 +521,14 @@ window.__ModuleLoader__.load({
       '.fx-kw{color:var(--shiki-token-keyword,#fc5fa3)}',
       '.fx-str{color:var(--shiki-token-string,#fc6a5d)}',
       '.fx-num{color:var(--shiki-token-constant,#d0bf69)}',
+      '.fx-md-h{color:var(--dsw-alias-markdown-heading,#fc5fa3);font-weight:600}',
+      '.fx-md-code{color:var(--dsw-alias-markdown-code,#6fc3de)}',
+      '.fx-md-strong{color:var(--dsw-alias-markdown-strong,#f2f3f7);font-weight:600}',
+      '.fx-md-em{color:var(--dsw-alias-markdown-emph,#dfdfe0);font-style:italic}',
+      '.fx-md-link{color:var(--dsw-alias-markdown-link,#6699ff)}',
+      '.fx-md-quote{color:var(--dsw-alias-markdown-block-quote,#8b8b95)}',
+      '.fx-md-list{color:var(--dsw-alias-brand-primary,#0a84ff)}',
+      '.fx-md-hr{color:var(--dsw-alias-border-l2,rgba(255,255,255,.28))}',
       '.fx-cm{color:var(--shiki-token-comment,#7f8c98)}',
       '.fx-ty{color:var(--shiki-token-parameter,#5dd8ff)}',
       '.fx-fn{color:var(--shiki-token-function,#41a1c0)}',
@@ -581,6 +744,13 @@ window.__ModuleLoader__.load({
                       h('span', { className: `fx-chev${row.type === 'directory' && row.open ? ' open' : ''}` }, row.type === 'directory' ? h(Chevron, { open: row.open }) : null),
                       h('span', { className: 'fx-ico' }, row.type === 'directory' ? h(FolderGlyph, { color: '#4a9dec' }) : h(FileGlyph, { name: row.name })),
                       h('span', { className: 'fx-name' }, row.name),
+                      row.flat
+                        ? h(
+                            'span',
+                            { className: 'fx-rowPath' },
+                            row.path.slice(state.root.length + 1).split('/').slice(0, -1).join('/'),
+                          )
+                        : null,
                     ),
                   ),
             ),
@@ -635,7 +805,7 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'fx-status' },
-              h('span', null, doc && doc.kind === 'text' ? (LANG_LABEL[langOf(doc.path)] || extOf(doc.path) || 'text') : ''),
+              h('span', null, doc && doc.kind === 'text' ? (LANG_LABEL[doc.lang] || extOf(doc.path) || 'text') : ''),
               doc && doc.kind === 'text' ? h('span', null, t('lines', { count: doc.lines })) : null,
               doc && doc.size ? h('span', null, formatBytes(doc.size)) : null,
               doc && doc.kind === 'text' ? h('span', null, 'UTF-8') : null,
@@ -652,11 +822,11 @@ window.__ModuleLoader__.load({
       const taRef = useRef(null)
       const hlRef = useRef(null)
       const gutterRef = useRef(null)
-      const [html, setHtml] = useState(() => highlight(doc.text, langOf(doc.path)))
+      const [html, setHtml] = useState(() => highlight(doc.text, doc.lang || langOf(doc.path, doc.text)))
 
       // 高亮跟着文本走，但打字时不要每个字符都重排整篇：60ms 去抖。
       useEffect(() => {
-        const id = window.setTimeout(() => setHtml(highlight(doc.text, langOf(doc.path))), 60)
+        const id = window.setTimeout(() => setHtml(highlight(doc.text, doc.lang || langOf(doc.path, doc.text))), 60)
         return () => window.clearTimeout(id)
       }, [doc.text, doc.path])
 
@@ -805,6 +975,8 @@ window.__ModuleLoader__.load({
       function buildRows(state) {
         const rows = []
         const needle = state.filter.trim().toLowerCase()
+        // 有筛选时用宿主返回的递归结果，不再从「已展开」的分支里凑。
+        if (needle && Array.isArray(state.found)) return state.found
         const walk = (dir, depth) => {
           for (const child of state.children[dir] || []) {
             const path = joinPath(dir, child.name)
@@ -818,6 +990,8 @@ window.__ModuleLoader__.load({
         walk(state.root, 0)
         return rows
       }
+
+      let filterTimer = null
 
       const actions = {
         async boot() {
@@ -899,6 +1073,7 @@ window.__ModuleLoader__.load({
               doc: {
                 path,
                 kind: 'text',
+                lang: langOf(path, data.text),
                 text: data.text,
                 saved: data.text,
                 version: data.version,
@@ -952,7 +1127,32 @@ window.__ModuleLoader__.load({
           return Promise.all(dirs.map((dir) => actions.loadDir(dir))).then(() => store.set((state) => ({ rows: buildRows(state) })))
         },
         setFilter(filter) {
-          store.set((state) => ({ filter, rows: buildRows({ ...state, filter }) }))
+          store.set({ filter })
+          if (filterTimer) window.clearTimeout(filterTimer)
+          const needle = filter.trim()
+          if (!needle) {
+            store.set((state) => ({ found: null, rows: buildRows(state) }))
+            return
+          }
+          filterTimer = window.setTimeout(async () => {
+            const { root } = store.get()
+            if (!root) return
+            store.set({ searching: true })
+            try {
+              const data = await api('search', { root, query: needle })
+              const found = (data.entries || []).map((entry) => ({
+                path: entry.path,
+                name: entry.name,
+                type: entry.type,
+                depth: 0,
+                open: false,
+                flat: true,
+              }))
+              store.set((state) => ({ searching: false, found, rows: state.filter.trim() ? found : buildRows(state) }))
+            } catch (error) {
+              store.set({ searching: false, error: `${translate('searchFailed')}: ${String(error && error.message)}` })
+            }
+          }, 180)
         },
         setSplit(split) {
           store.set({ split })
