@@ -1,5 +1,7 @@
 # dsh-file-explorer
 
+![预览](https://github.com/cl19940824/dsh-plugins/raw/main/docs/file-explorer-preview.png)
+
 给 DeepSeek Harness 加一个 **Xcode 项目导航器** 风格的文件浏览器：左侧栏底部多一个文件夹图标，
 点进去是「工作区文件树 + 可编辑预览」的双栏面板。
 
