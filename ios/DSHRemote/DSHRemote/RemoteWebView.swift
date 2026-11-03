@@ -7,6 +7,8 @@ final class WebModel: NSObject, ObservableObject {
     let webView: WKWebView
     @Published var isLoading = false
     @Published var lastError: String?
+    /// 首屏加载完成（`?lan=` 换完 cookie、跳到 dsh 首页之后）。
+    @Published var didLoad = false
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -30,7 +32,9 @@ final class WebModel: NSObject, ObservableObject {
     }
 
     func reload() {
-        if webView.url == nil, let current = webView.url { webView.load(URLRequest(url: current)) }
+        if webView.url == nil {
+            return
+        }
         webView.reload()
     }
 
@@ -51,6 +55,7 @@ extension WebModel: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         isLoading = false
+        didLoad = true
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {

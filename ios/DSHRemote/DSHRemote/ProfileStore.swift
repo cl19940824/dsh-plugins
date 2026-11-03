@@ -1,17 +1,29 @@
 import Foundation
 
-/// 存在钥匙串里的连接配置。口令和 TOTP secret 都不落 UserDefaults。
+/// 存在钥匙串里的连接配置。访问码不落 UserDefaults。
 struct RemoteProfile: Codable, Equatable, Identifiable {
     var id: String = UUID().uuidString
-    /// 入口地址，形如 `https://dsh.example.com` 或 `http://192.168.1.8:3081`。
+    /// 入口地址，形如 `http://192.168.1.8:3081`。
     var baseURL: String
-    /// 访问口令（公网模式下是登录密码）。
+    /// 局域网访问码（面板上的 `?lan=` 那串）。
     var password: String
-    /// Base32 的 TOTP secret；为空表示这个入口没开动态码。
+    /// 公网模式的 TOTP secret，局域网模式留空。
     var totpSecret: String?
 
     var url: URL? { URL(string: baseURL) }
     var hostLabel: String { url?.host ?? baseURL }
+
+    /// 真正要加载的地址：访问码拼成 `?lan=`，和电脑上二维码里的链接一致。
+    var entryURL: URL? {
+        guard var components = URLComponents(string: baseURL) else { return nil }
+        if !password.isEmpty {
+            var items = components.queryItems ?? []
+            items.removeAll { $0.name == "lan" }
+            items.append(URLQueryItem(name: "lan", value: password))
+            components.queryItems = items
+        }
+        return components.url
+    }
 }
 
 @MainActor
@@ -21,7 +33,12 @@ final class ProfileStore: ObservableObject {
     private let service = "com.chenglang.dshremote"
     private let account = "profile"
 
-    init() { reload() }
+    init() {
+        reload()
+        #if DEBUG
+        seedForUITestIfNeeded()
+        #endif
+    }
 
     func reload() {
         guard let data = Keychain.load(service: service, account: account) else {
@@ -41,7 +58,14 @@ final class ProfileStore: ObservableObject {
     func clear() {
         Keychain.delete(service: service, account: account)
         profile = nil
-        // 顺手把网页 cookie 也清掉，避免退出后再打开还是已登录状态。
-        URLCache.shared.removeAllCachedResponses()
     }
+
+    #if DEBUG
+    /// 只在 Debug 生效：`-e2e <url> <code>` 直接写入配置，给自动化截图用。
+    private func seedForUITestIfNeeded() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let index = args.firstIndex(of: "-e2e"), index + 2 < args.count else { return }
+        save(RemoteProfile(baseURL: args[index + 1], password: args[index + 2], totpSecret: nil))
+    }
+    #endif
 }

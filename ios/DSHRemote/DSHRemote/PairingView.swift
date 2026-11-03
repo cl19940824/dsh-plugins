@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// 配对信息既能扫码，也能手动填。二维码内容由电脑端插件生成：
-/// `dshremote://pair?url=https%3A%2F%2Fdsh.example.com&password=...&secret=JBSWY3DP...`
+/// 配对信息既能扫码，也能手动填。电脑端的「局域网访问」面板会给出两种码：
+/// - 网址：`http://192.168.1.8:3081/?lan=AB12CD34`
+/// - 自定义：`dshremote://pair?url=http%3A%2F%2F192.168.1.8%3A3081&password=AB12CD34`
 struct PairingView: View {
     @EnvironmentObject private var store: ProfileStore
     @Environment(\.dismiss) private var dismiss
@@ -10,32 +11,30 @@ struct PairingView: View {
 
     @State private var urlText = ""
     @State private var password = ""
-    @State private var secret = ""
     @State private var showScanner = false
     @State private var error: String?
 
     var body: some View {
         Form {
             Section {
-                TextField("https://dsh.example.com", text: $urlText)
+                TextField("http://192.168.1.8:3081", text: $urlText)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
-                SecureField("访问口令", text: $password)
-                TextField("TOTP secret（可选，Base32）", text: $secret)
-                    .textInputAutocapitalization(.characters)
+                SecureField("访问码", text: $password)
+                    .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             } header: {
-                Text("入口")
+                Text("电脑地址")
             } footer: {
-                Text("地址就是电脑上「公网访问」里显示的那条。开了动态码的话，App 会在这里自己算 6 位码，不用装验证器。")
+                Text("打开电脑上 dsh 的「局域网访问」面板，照着上面的地址和访问码填；或者直接扫面板上的二维码，两项都会自动带进来。")
             }
 
             Section {
                 Button {
                     showScanner = true
                 } label: {
-                    Label("扫描配对二维码", systemImage: "qrcode.viewfinder")
+                    Label("扫描面板二维码", systemImage: "qrcode.viewfinder")
                 }
 
                 if let profile = editing {
@@ -46,6 +45,8 @@ struct PairingView: View {
                         Label("删除这台设备上的配置", systemImage: "trash")
                     }
                 }
+            } footer: {
+                Text("手机和电脑要在同一个 Wi-Fi。换了网络、电脑的 IP 变了，回这里改地址就行。")
             }
 
             if let error {
@@ -78,7 +79,6 @@ struct PairingView: View {
         guard let editing else { return }
         urlText = editing.baseURL
         password = editing.password
-        secret = editing.totpSecret ?? ""
     }
 
     private func apply(_ text: String) {
@@ -88,7 +88,6 @@ struct PairingView: View {
         }
         urlText = payload.url
         if !payload.password.isEmpty { password = payload.password }
-        if let payloadSecret = payload.secret { secret = payloadSecret }
         error = nil
     }
 
@@ -102,8 +101,8 @@ struct PairingView: View {
         let profile = RemoteProfile(
             id: editing?.id ?? UUID().uuidString,
             baseURL: value,
-            password: password,
-            totpSecret: secret.trimmed.isEmpty ? nil : secret.trimmed
+            password: password.trimmed,
+            totpSecret: editing?.totpSecret
         )
         store.save(profile)
         dismiss()
@@ -127,10 +126,18 @@ enum PairingLink {
             }
             guard let url = items["url"], !url.isEmpty else { return nil }
             let secret = items["secret"].flatMap { $0.isEmpty ? nil : $0 }
-            return Payload(url: url, password: items["password"] ?? "", secret: secret)
+            let code = items["password"] ?? items["code"] ?? ""
+            return Payload(url: url, password: code, secret: secret)
         }
         if raw.lowercased().hasPrefix("http://") || raw.lowercased().hasPrefix("https://") {
-            return Payload(url: raw, password: "", secret: nil)
+            guard var components = URLComponents(string: raw) else { return nil }
+            var code = ""
+            if let items = components.queryItems {
+                code = items.first { $0.name == "lan" }?.value ?? ""
+                components.queryItems = items.filter { $0.name != "lan" }
+            }
+            guard let cleaned = components.string, !cleaned.isEmpty else { return nil }
+            return Payload(url: cleaned, password: code, secret: nil)
         }
         return nil
     }

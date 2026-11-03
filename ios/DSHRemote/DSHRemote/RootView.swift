@@ -65,27 +65,43 @@ struct RemoteScreen: View {
         .sheet(isPresented: $showSettings) {
             NavigationStack { PairingView(editing: profile) }
         }
-        .task(id: profile.id) { await connect() }
+        .task(id: profile.id) { connect() }
         .onChange(of: store.profile) { _, next in
             guard next != nil else { return }
-            Task { await connect() }
+            connect()
+        }
+        .onChange(of: model.didLoad) { _, finished in
+            if finished { phase = .ready }
+        }
+        .onChange(of: model.lastError) { _, failure in
+            guard let failure else { return }
+            phase = .failed
+            message = Self.friendly(failure, host: profile.hostLabel)
         }
     }
 
-    private func connect() async {
+    /// 局域网模式下不需要登录接口：`?lan=<访问码>` 会让插件种好 cookie 再跳首页。
+    private func connect() {
         phase = .connecting
         message = ""
-        defer { }
-
-        do {
-            let cookie = try await RemoteLogin.login(profile: profile)
-            guard let url = profile.url else { throw LoginError.badURL }
-            await model.load(url: url, cookies: [cookie])
-            phase = .ready
-        } catch {
-            message = error.localizedDescription
+        model.didLoad = false
+        guard let url = profile.entryURL else {
             phase = .failed
+            message = "地址格式不对，应该是 http://192.168.x.x:3081 这样。"
+            return
         }
+        Task { await model.load(url: url, cookies: []) }
+    }
+
+    private static func friendly(_ raw: String, host: String) -> String {
+        let lower = raw.lowercased()
+        if lower.contains("could not connect") || lower.contains("connection") || lower.contains("timed out") {
+            return "连不上 \(host)。确认手机和电脑在同一个 Wi-Fi，电脑上的「局域网访问」是开着的，地址和访问码与面板一致。"
+        }
+        if lower.contains("app transport security") {
+            return "系统拦住了明文 HTTP 请求，请在系统设置里允许本机网络访问。"
+        }
+        return raw
     }
 
     private func overlay(message: String, retry: Bool) -> some View {
@@ -102,7 +118,7 @@ struct RemoteScreen: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button("重试") {
-                Task { await connect() }
+                connect()
             }
             .buttonStyle(.borderedProminent)
             .opacity(retry ? 1 : 0)
